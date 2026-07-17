@@ -1,0 +1,56 @@
+---
+description: Формат и именование git commit messages (Conventional Commits)
+alwaysApply: true
+---
+
+# Git commits — именование
+
+При создании коммитов соблюдай этот формат. Протокол staging/HEREDOC/safety — из user rules; здесь только **текст сообщения**.
+
+## Формат
+
+```
+type(scope): subject
+
+Optional body: why, not a file list.
+```
+
+- **Язык:** English (как в `main.mdc`).
+- **Subject:** императив, lowercase после `type`, без точки в конце, ≤ ~72 символов.
+- **Body:** зачем сделано; можно опустить для тривиальных правок.
+- **Scope:** опционально; короткий (`docs`, `agent`, `store`, `ctl`, `runner`).
+
+## Types
+
+| type | Когда |
+|---|---|
+| `feat` | новая функциональность |
+| `fix` | исправление бага |
+| `docs` | только документация / rules / agents markdown |
+| `refactor` | изменение кода без смены поведения |
+| `test` | тесты |
+| `chore` | tooling, gitignore, зависимости без фичи |
+| `ci` | CI/CD |
+
+Один коммит — одна тема. Не смешивай `feat` и несвязанный `docs` без нужды.
+
+## Примеры
+
+```text
+# ✅ GOOD
+docs: add in-memory store and Phase PG plan
+feat(store): add memory repository behind Store interface
+fix(agent): renew lease before process start
+chore: add gitignore for Go binaries and env files
+
+# ❌ BAD
+Update files
+Fixed stuff.
+docs: Added the implementation plan and also refactored agent.  # mixed + past tense + period
+Добавил миграции  # not English
+```
+
+## Связь с проектом
+
+- Правки только в `docs/` или `.cursor/**/*.md(c)` → обычно `docs: …`
+- Не выдумывай scope длиннее одного слова.
