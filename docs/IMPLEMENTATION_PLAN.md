@@ -1,360 +1,312 @@
-# План реализации MVP Bot Runtime Manager
+# План реализации — чеклист
 
-**Версия:** 0.2  
-**Основание:** [TZ.md](./TZ.md) v0.3  
-**Цель документа:** пошаговый план для реализации и handoff субагентам. Пользователь **сам проверяет каждый этап**; целиком проект агентам не отдаётся.
+**Версия:** 0.3  
+**ТЗ:** [TZ.md](./TZ.md) v0.3  
+
+Документ для вас: все фазы с подпунктами.  
+**Manager** отмечает пункты `[x]` по мере реализации (после PASS от tester).  
+Пункт **«Принято вами»** отмечает manager **только после вашего явного ок**.
 
 ---
 
-## 0. Как пользоваться планом
+## Легенда
 
-1. Идём **строго по фазам**: следующая фаза не начинается, пока пользователь **вручную** не принял текущую.  
-2. Пользователь выдаёт **manager** только одну задачу / один этап (или явный короткий набор T0x) — **не** весь проект сразу.  
-3. Каждая задача ниже — кандидат на один handoff developer’у (один логический коммит / узкий diff).  
-4. Источник истины по продукту — ТЗ; план уточняет **порядок и границы**, не заменяет ТЗ.  
-5. Цепочка агентов: **пользователь → manager → developer → tester → manager → пользователь** (см. §0.1).
+| Отметка | Значение |
+|---|---|
+| `[ ]` | ещё не сделано |
+| `[x]` | сделано (агенты + tester) |
+| **Принято вами** | ручная проверка пройдена, можно следующий этап |
 
-### 0.1. Рабочий процесс агентов
+**Правила**
 
-```
-Пользователь
-    │  задание на один этап / задачу
-    ▼
- manager  ──планирует──►  developer  ──отчёт──►  tester
-    ▲                                              │
-    │         доработка (макс. 2 итерации)         │
-    │◄─────────────────────────────────────────────┤
-    │                                              │
-    │◄──────── финальный отчёт tester ─────────────┘
-    │
-    ▼
- подробный отчёт пользователю + как проверить вручную
-```
+1. Вам выдавать manager **одно** задание за раз (подпункт, блок или одна фаза) — не весь проект.
+2. Следующая фаза — только после **Принято вами** на текущей.
+3. Цепочка: вы → manager → developer → tester (до 2 доработок) → отчёт вам.
 
-| Роль | Делает | Не делает |
+---
+
+## Сводка прогресса
+
+| Фаза | Название | Статус |
 |---|---|---|
-| **manager** | дробит задание пользователя на handoff; зовёт developer/tester; итожит | не пишет прод-код; не стартует следующий этап без ок пользователя |
-| **developer** | реализует **только** текущий handoff | не расширяет scope; не «закрывает весь план» |
-| **tester** | проверяет результат developer; доработка или отчёт | не реализует фичи; максимум **2** цикла доработки, затем отчёт manager |
+| 0 | Каркас репозитория | ⏳ не начата |
+| 1 | Custom-бот + supervisor + ctl | ⏳ не начата |
+| 2 | Multi-tenant runner + healthcheck | ⏳ не начата |
+| 3 | Типы, lease, migrate, API | ⏳ не начата |
+| 4 | Укрепление (hardening) | ⏳ не начата |
 
-**Итерации tester → developer:** 1-й и 2-й возврат на доработку допустимы. После 2-й доработки и повторной проверки tester **обязан** отчитаться manager (pass / fail с остатком проблем) — без 3-го круга.
-
-**Ручная приёмка:** после отчёта manager пользователь сам прогоняет «Как проверить». Только после явного ок пользователя можно брать следующий этап.
-
-### Definition of Done (для любой задачи агентов)
-
-- Код собирается (`go build ./...`), если задача затрагивает Go.  
-- Tester прогнал проверки из handoff (авто и/или команды).  
-- Есть блок **«Как проверить вручную»** в финальном отчёте manager.  
-- Комментарии и ответы — по `.cursor/rules/main.mdc`.  
-- Scope соседних фаз / соседних T0x не тянем «заодно».
+*Статусы фазы: `⏳ не начата` → `🚧 в работе` → `👀 ждёт вашей проверки` → `✅ принята`.*  
+*Manager обновляет строку фазы в этой таблице.*
 
 ---
 
-## 1. Целевая картина MVP (что должно работать в конце Phase 2–3)
+## Phase 0 — Каркас репозитория
 
-На **одной ноде**:
+**Зачем:** чтобы локально собирался проект и крутилась PostgreSQL со схемой из ТЗ.
 
-1. PostgreSQL с схемой `nodes` / `runtimes` / `bots` / `bot_events`.  
-2. `agent` поднимает/гасит OS-процессы по БД.  
-3. ≥2 бота `default` в **одном** `bot-runner`.  
-4. ≥1 `custom` бот — отдельный процесс по launch contract.  
-5. `ctl` меняет desired в БД → состояние сходится.  
-6. `healthcheck` пишет unhealthy по `/healthz`; рестарт делает `agent`.  
+**Статус фазы:** ⏳ не начата
 
-Multi-node migrate и полноценный `control-api` — Phase 3 (можно урезать MVP до «заложено в схеме»).
+### 0.1. Go-модуль и структура каталогов
 
----
+- [ ] Инициализировать Go-модуль (`go mod init …`)
+- [ ] Создать каталоги: `cmd/agent`, `cmd/ctl`, `cmd/migrate`, `internal/config`, `internal/db`
+- [ ] Заглушки `main.go` (версия / help)
+- [ ] `.gitignore` (`bin/`, `.env`, IDE)
+- [ ] Короткий корневой `README.md` (что это, Postgres, миграции)
 
-## 2. Порядок фаз и зависимости
+**Проверка:** `go build ./cmd/agent ./cmd/ctl ./cmd/migrate`
 
-```mermaid
-flowchart LR
-  P0[Phase 0 Каркас] --> P1[Phase 1 Custom + Supervisor]
-  P1 --> P2[Phase 2 Runner + Healthcheck]
-  P2 --> P3[Phase 3 Migrate + типы]
-  P3 --> P4[Phase 4 Hardening]
-```
+### 0.2. PostgreSQL локально и конфиг
 
-| Фаза | Результат | Блокирует |
-|---|---|---|
-| 0 | Модуль, БД, пустые cmd, docker-compose | всё |
-| 1 | Custom start/stop через агент + ctl | runner бессмысленен без supervisor |
-| 2 | Multi-tenant default + healthcheck | плотность ботов, приёмка MVP |
-| 3 | Lease/migrate/вторая нода | масштабирование |
-| 4 | NOTIFY, лимиты, handoff-утилита | production polish |
+- [ ] `docker-compose.yml` (PostgreSQL 16+, volume, порт 5432, healthcheck)
+- [ ] `.env.example` (`DATABASE_URL`, `NODE_ID`)
+- [ ] `internal/config` — чтение настроек из ENV
 
----
+**Проверка:** `docker compose up -d` → БД healthy; конфиг читается без паники
 
-## 3. Phase 0 — Каркас репозитория
+### 0.3. Миграции схемы (goose)
 
-**Цель:** пустой, но собираемый скелет + живая PostgreSQL локально.
+- [ ] Подключить goose (SQL-миграции)
+- [ ] `cmd/migrate` — команды up / down / status
+- [ ] Таблица `nodes`
+- [ ] Таблица `runtimes` (в т.ч. lease-поля)
+- [ ] Таблица `bots` (`port` UNIQUE, `bot_type`, `custom_name`, …)
+- [ ] Таблица `bot_events`
+- [ ] Индексы и CHECK из ТЗ §6
+- [ ] **Не** делать LISTEN/NOTIFY в этой фазе
 
-### 0.1. Инициализация Go-модуля
+**Проверка:** `migrate up` на чистой БД; повторный up безопасен; down+up не ломает схему
 
-- [ ] `go mod init` (имя модуля согласовать, например `github.com/<org>/mvp-manager` или `mvp-manager`).  
-- [ ] Каталоги: `cmd/agent`, `cmd/ctl`, `cmd/migrate`, `internal/config`, `internal/db`.  
-- [ ] Заглушки `main.go` с `-h` / печатью версии.  
-- [ ] `.gitignore`: `bin/`, `.env`, IDE.  
-- [ ] Корневой `README.md` (кратко: что это, как поднять Postgres, как мигрировать).
+### 0.4. Подключение к БД из агента
 
-**Приёмка:** `go build ./cmd/agent ./cmd/ctl ./cmd/migrate`.
+- [ ] Пул соединений `pgxpool` в `internal/db`
+- [ ] Ping БД при старте
+- [ ] Заготовки интерфейсов репозиториев (можно пустые методы)
+- [ ] Корректное завершение по SIGINT/SIGTERM
 
-### 0.2. Docker Compose + конфиг
+**Проверка:** `agent` пишет в лог, что БД доступна, и тихо выходит по сигналу
 
-- [ ] `docker-compose.yml`: PostgreSQL 16+, volume, порт `5432`, healthcheck контейнера.  
-- [ ] `.env.example`: `DATABASE_URL`, `NODE_ID`.  
-- [ ] `internal/config`: чтение из ENV (без YAML на первом шаге — проще).
+### Закрытие Phase 0
 
-**Приёмка:** `docker compose up -d` → Postgres ready; конфиг парсится в unit-тесте или `ctl` dry-run.
-
-### 0.3. Миграции схемы
-
-- [ ] Выбрать инструмент: **goose** (SQL-миграции).  
-- [ ] `cmd/migrate` — обёртка `goose up/down/status`.  
-- [ ] SQL по ТЗ §6: enums, `nodes`, `runtimes`, `bots`, `bot_events`, индексы, UNIQUE(`port`), CHECK для `custom_name`.  
-- [ ] Пока **без** LISTEN/NOTIFY-триггеров (Phase 4).
-
-**Приёмка:** `migrate up` на чистой БД идемпотентно проходит; `migrate down` (хотя бы одна ступень) не ломает повторный up.
-
-### 0.4. Минимальный доступ к БД
-
-- [ ] `pgxpool` в `internal/db`.  
-- [ ] Ping при старте `agent`/`ctl`.  
-- [ ] Заготовка repository-интерфейсов (пустые методы ок).
-
-**Приёмка:** `agent` стартует, пишет лог «db ok», корректно завершается по SIGINT.
-
-### Критерии закрытия Phase 0
-
-- Схема соответствует ТЗ (поля port, bot_type, custom_name, assigned_node_id, lease-поля на runtimes).  
-- Локальный контур: compose + migrate + build.
+- [ ] Все подпункты 0.1–0.4 отмечены `[x]`
+- [ ] **Принято вами** (после вашей ручной проверки)
 
 ---
 
-## 4. Phase 1 — Custom bots + Supervisor + ctl
+## Phase 1 — Custom-бот, supervisor, ctl
 
-**Цель:** один custom-бот (заглушка-бинарник) стартует/останавливается по `desired_state` в БД.
+**Зачем:** один custom-процесс стартует и останавливается по строкам в БД (без multi-tenant).
+
+**Статус фазы:** ⏳ не начата  
+**Старт только после:** Phase 0 → ✅ принята
 
 ### 1.1. Доменные типы
 
-- [ ] `internal/process` или `internal/runtime`: структуры Runtime, Bot (без тяжёлой логики).  
-- [ ] Маппинг строк БД ↔ Go-типы.
+- [ ] Структуры Runtime / Bot в `internal/…`
+- [ ] Маппинг полей БД ↔ Go
 
-### 1.2. Supervisor
+### 1.2. Supervisor процессов
 
-- [ ] `Start(ctx, spec)` / `Stop(ctx, grace)` / учёт PID / `Wait` в горутине.  
-- [ ] Process group (`Setpgid`), SIGTERM → wait → SIGKILL.  
-- [ ] Подробные комментарии по жизненному циклу (правило main).
+- [ ] `Start` / `Stop` / учёт PID
+- [ ] Ожидание выхода (`Wait`) в фоне
+- [ ] Process group; SIGTERM → ожидание → SIGKILL
+- [ ] Подробные комментарии жизненного цикла (на русском)
 
-**Приёмка:** unit-тест с тестовым `sleep`/echo-процессом: start → PID жив → stop → процесса нет.
+**Проверка:** автотест: start → процесс жив → stop → процесса нет
 
-### 1.3. Reconcile только для `kind=custom_bot`
+### 1.3. Reconcile для custom
 
-- [ ] Цикл: выбрать runtimes ноды → desired vs actual → start/stop.  
-- [ ] Писать `pid`, `actual_state`, `last_error`, `exit_code`.  
-- [ ] Heartbeat в `nodes`.  
-- [ ] Пока **без** полноценного lease (поля есть, логика — заглушка или простой single-node).
+- [ ] Цикл сверки desired ↔ actual для `kind=custom_bot`
+- [ ] Запись в БД: `pid`, `actual_state`, `last_error`, `exit_code`
+- [ ] Heartbeat ноды в `nodes`
+- [ ] Полноценный lease пока не обязателен (поля уже в схеме)
 
-**Приёмка:** вручную `UPDATE desired_state` → в течение ≤ reconcile_interval процесс появляется/исчезает.
+**Проверка:** смена `desired_state` в БД → процесс появляется/исчезает за интервал reconcile
 
-### 1.4. `ctl` (без HTTP)
+### 1.4. CLI `ctl`
 
-- [ ] Команды: `bots create`, `bots start`, `bots stop`, `bots list`, `runtimes list`.  
-- [ ] Create custom: пишет `bots` + `runtimes`, проверяет UNIQUE port.  
-- [ ] Токен в MVP: поле/ENV (без vault).
+- [ ] `bots create` (custom + runtime, проверка уникальности порта)
+- [ ] `bots start` / `bots stop`
+- [ ] `bots list`
+- [ ] `runtimes list`
+- [ ] Токен в MVP — простое поле/ENV (без vault)
 
-**Приёмка:** сценарий CLI создаёт custom → start → list показывает running → stop.
+**Проверка:** create → start → list (running) → stop
 
-### 1.5. Fixture custom-бота
+### 1.5. Заглушка custom-бота (fake-bot)
 
-- [ ] Простейший бинарник-заглушка в `testdata/fake-bot` или `examples/fake-bot`:  
-  - читает `PORT`, `BOT_MODE`;  
-  - при webhook слушает `/healthz`;  
-  - при polling просто живёт до SIGTERM.
+- [ ] Пример бинарника (`examples/fake-bot` или `testdata/…`)
+- [ ] Читает `PORT`, `BOT_MODE`, …
+- [ ] Webhook: отвечает на `/healthz`
+- [ ] Polling: просто живёт до SIGTERM
+- [ ] Короткий E2E-сценарий/скрипт с `ctl`
 
-**Приёмка:** end-to-end через `ctl` + fake-bot.
+**Проверка:** полный прогон ctl + fake-bot на локальной машине
 
-### Критерии закрытия Phase 1
+### Закрытие Phase 1
 
-- Custom управляется из БД/`ctl`.  
-- Агент не падает при краше ребёнка: `actual_state=failed`.  
-- `control-api` **не обязателен** (отложить).
-
----
-
-## 5. Phase 2 — Multi-tenant `bot-runner` + `healthcheck`
-
-**Цель:** закрыть ключевую приёмку плотности default-ботов.
-
-### 2.1. Репозиторий / пакет `bot-runner`
-
-Решение на старте фазы (зафиксировать в README):
-
-- **A (предпочтительно для MVP):** monorepo `mvp-manager/cmd/bot-runner` + `internal/runner/...`  
-- **B:** отдельный модуль `bot-runner/`  
-
-### 2.2. Ядро runner
-
-- [ ] Загрузка ботов: `bot_type IN ('default', ...)` AND `assigned_node_id` AND `desired_state=running` AND `runtime_id`.  
-- [ ] In-memory registry инстансов.  
-- [ ] Add / remove / reload по `config_version`.  
-- [ ] Сценарий `default`: минимальный (echo/healthz + заглушка апдейтов), без полного Telegram до стабилизации lifecycle.  
-- [ ] Webhook: `Listen` на `bot.port`.  
-- [ ] Polling: горутина-заглушка без bind.
-
-**Приёмка:** два default webhook-бота → **один** PID runner, два разных порта отвечают на `/healthz`.
-
-### 2.3. Агент управляет runtime `bot_runner`
-
-- [ ] Если есть default* desired=running — ensure один `runtimes.kind=bot_runner` на ноду.  
-- [ ] Старт/стоп бинарника runner.  
-- [ ] Привязка `bots.runtime_id`.
-
-**Приёмка:** stop runner в БД → процесс убит; start → снова поднимает инстансы.
-
-### 2.4. Реальная интеграция мессенджера (подфаза)
-
-После стабильного lifecycle:
-
-- [ ] Telegram adapter для `default` (polling и/или webhook) — через Context7 по актуальному SDK.  
-- [ ] Max — второй канал, можно после Telegram.  
-- [ ] Токены из `token_ref` / конфиг.
-
-**Приёмка:** один тестовый Telegram-бот отвечает на `/start` (сценарий default).
-
-### 2.5. `cmd/healthcheck`
-
-- [ ] Отдельный бинарник, интервал 10–30s.  
-- [ ] Только webhook + desired=running.  
-- [ ] Пишет events / unhealthy; **не** рестартит.  
-- [ ] Агент: при unhealthy/failed → restart instance или runtime по policy.
-
-**Приёмка:** убить listener бота (или вернуть 500 из заглушки) → healthcheck отмечает unhealthy → агент восстанавливает.
-
-### Критерии закрытия Phase 2
-
-- Пункты 1–4, 6–8 из ТЗ §16 (MVP acceptance) закрыты для single-node.  
-- Бинарники: `agent`, `bot-runner`, `healthcheck`, `ctl`.
+- [ ] Custom управляется из БД / `ctl`
+- [ ] Краш дочернего процесса → `actual_state=failed`, агент жив
+- [ ] `control-api` сознательно **не** делаем в этой фазе
+- [ ] **Принято вами**
 
 ---
 
-## 6. Phase 3 — Типы, lease, migrate, API
+## Phase 2 — Multi-tenant bot-runner и healthcheck
 
-### 3.1. Каталог типов
+**Зачем:** много default-ботов в одном OS-процессе + отдельная проверка `/healthz`.
 
-- [ ] `default_extended` как второй сценарий в runner.  
-- [ ] Регистрация сценариев через узкий интерфейс (SOLID, без «божественного» switch навсегда).
+**Статус фазы:** ⏳ не начата  
+**Старт только после:** Phase 1 → ✅ принята
 
-### 3.2. Lease
+### 2.1. Решение по размещению runner
 
-- [ ] Acquire / renew / release на `runtimes`.  
-- [ ] Не стартовать без lease.  
-- [ ] Тест гонки двух агентов (два `NODE_ID` на одной БД) — второй не поднимает тот же runtime.
+- [ ] Зафиксировать вариант (**A рекомендуется**): monorepo `cmd/bot-runner` + `internal/runner`
+- [ ] Альтернатива B (отдельный модуль) — только если явно решите вы
+- [ ] Краткая запись в README
 
-### 3.3. Migrate
+### 2.2. Ядро bot-runner (lifecycle без полного Telegram)
 
-- [ ] Протокол ТЗ: stop/remove → wait → reassign → start/add.  
-- [ ] `ctl bots migrate` (+ позже API).  
-- [ ] Default и custom пути раздельно.
+- [ ] Загрузка default*-ботов из БД по ноде / runtime / desired
+- [ ] In-memory реестр инстансов
+- [ ] Динамический add / remove / reload по `config_version`
+- [ ] Сценарий `default` (минимум: healthz + заглушка логики)
+- [ ] Webhook: listen на уникальном `port` бота
+- [ ] Polling: горутина без bind порта (порт зарезервирован в БД)
 
-**Приёмка:** E2E migrate на двух агентах (можно два процесса на одной машине с разными `NODE_ID`).
+**Проверка:** 2 default webhook-бота → **один** PID runner, оба порта отдают `/healthz`
 
-### 3.4. `control-api`
+### 2.3. Агент управляет процессом runner
 
-- [ ] Вынести HTTP из любых временных заглушек.  
-- [ ] Эндпоинты ТЗ §11.  
-- [ ] Auth: token. Bind localhost по умолчанию.
+- [ ] Если есть running default* — обеспечить runtime `bot_runner` на ноде
+- [ ] Старт / стоп бинарника runner через supervisor
+- [ ] Привязка `bots.runtime_id`
 
-### 3.5. Шаблон handoff клиенту
+**Проверка:** stop runner в БД → PID убит; start → инстансы снова живы
 
-- [ ] Документ + пример `.env.example` для single-bot.  
-- [ ] `cmd/handoff` — опционально в конце фазы или Phase 4.
+### 2.4. Healthcheck (отдельный cmd)
 
-### Критерии закрытия Phase 3
+- [ ] Бинарник `cmd/healthcheck`
+- [ ] Опрос `/healthz` только у webhook + desired=running
+- [ ] Пишет статус / events в БД; **сам не рестартит**
+- [ ] Агент реагирует на unhealthy/failed (рестарт по policy)
 
-- ТЗ §16 п.9–10.  
-- Двухнодовый сценарий migrate зелёный.
+**Проверка:** «сломать» healthz → unhealthy в БД → агент восстанавливает
 
----
+### 2.5. Мессенджеры (после стабильного lifecycle)
 
-## 7. Phase 4 — Hardening
+Делать **отдельным** заданием manager, когда 2.2–2.4 приняты.
 
-- [ ] `LISTEN/NOTIFY` + poll safety net.  
-- [ ] Restart policy / backoff.  
-- [ ] Метрики (хотя бы slog-счётчики или Prometheus later).  
-- [ ] Лимиты ботов на ноду.  
-- [ ] Шардирование нескольких runner’ов.  
-- [ ] Секреты токенов.  
-- [ ] `doctor` / `drain-node` по необходимости.
+- [ ] Telegram для сценария `default` (webhook и/или polling)
+- [ ] Канал Max (можно после Telegram)
+- [ ] Подтягивание токена из `token_ref` / конфига
 
----
+**Проверка:** тестовый Telegram-бот отвечает на `/start`
 
-## 8. Параллельные дорожки (не блокируют Phase 0–1)
+### Закрытие Phase 2
 
-| Дорожка | Когда | Заметки |
-|---|---|---|
-| Субагенты manager/developer | После утверждения плана | Короткие handoff по задачам §3–7 |
-| CI (build + vet + test) | С Phase 0–1 | `go test ./...` |
-| Документация оператора | Phase 1+ | Как поднять агент systemd unit — позже |
-| Настоящие custom-репо клиентов | Phase 2+ | Нужен только launch contract |
-
----
-
-## 9. Рекомендуемый бэклог первых 10 задач (для developer)
-
-| ID | Фаза | Задача | Оценка сложности |
-|---|---|---|---|
-| T01 | 0 | go mod + структура cmd/internal + .gitignore | S |
-| T02 | 0 | docker-compose Postgres + .env.example | S |
-| T03 | 0 | goose миграции схемы ТЗ §6 | M |
-| T04 | 0 | config + db pool + ping в agent | S |
-| T05 | 1 | supervisor Start/Stop/Wait + тест | M |
-| T06 | 1 | reconcile custom_bot + heartbeat | M |
-| T07 | 1 | ctl create/start/stop/list | M |
-| T08 | 1 | examples/fake-bot + E2E скрипт | S |
-| T09 | 2 | bot-runner registry + 2× webhook ports | L |
-| T10 | 2 | healthcheck + реакция агента на unhealthy | M |
-
-Дальше — T11+ из Phase 2.4 (Telegram), Phase 3 (lease/migrate/api).
+- [ ] ≥2 default в одном процессе runner
+- [ ] Unique port соблюдается
+- [ ] Custom из Phase 1 по-прежнему работает
+- [ ] Есть бинарники: `agent`, `bot-runner`, `healthcheck`, `ctl`
+- [ ] **Принято вами** (MVP single-node по сути здесь)
 
 ---
 
-## 10. Риски на старте реализации
+## Phase 3 — Типы сценариев, lease, migrate, API
 
-| Риск | Что делаем в плане |
-|---|---|
-| Сразу писать Telegram + менеджер | Сначала lifecycle (fake-bot), мессенджер — подфаза 2.4 |
-| Сделать control-api раньше ctl | Сначала ctl (быстрее для отладки) |
-| Multi-tenant без supervisor | Phase 1 строго до Phase 2 |
-| Раздуть Phase 0 | Не тащить NOTIFY, lease-логику, API |
+**Зачем:** расширение сценариев и перенос между нодами (2–3 сервера).
+
+**Статус фазы:** ⏳ не начата  
+**Старт только после:** Phase 2 → ✅ принята
+
+### 3.1. Каталог вшитых типов
+
+- [ ] Сценарий `default_extended`
+- [ ] Узкий интерфейс регистрации сценариев (без монолитного switch «навсегда»)
+
+### 3.2. Lease на runtime
+
+- [ ] Acquire / renew / release
+- [ ] Старт процесса только при успешном lease
+- [ ] Проверка гонки: два агента с разными `NODE_ID` — второй не захватывает чужой runtime
+
+### 3.3. Migrate бота между нодами
+
+- [ ] Протокол: stop/remove → wait → reassign → start/add
+- [ ] Путь для custom
+- [ ] Путь для default (через runner)
+- [ ] Команда `ctl bots migrate`
+
+**Проверка:** E2E на двух агентах (можно одна машина, два `NODE_ID`)
+
+### 3.4. HTTP `control-api`
+
+- [ ] Отдельный `cmd/control-api`
+- [ ] Эндпоинты из ТЗ §11
+- [ ] Auth token; по умолчанию bind localhost
+
+### 3.5. Выдача бота клиенту (документы)
+
+- [ ] Описание handoff + `.env.example` для single-bot режима
+- [ ] `cmd/handoff` — по желанию здесь или в Phase 4
+
+### Закрытие Phase 3
+
+- [ ] Migrate без двойного запуска
+- [ ] Lease работает
+- [ ] **Принято вами**
 
 ---
 
-## 11. Чеклист утверждения плана
+## Phase 4 — Hardening
 
-- [ ] Согласован module path / имя репо.  
-- [ ] Согласован monorepo для `bot-runner` (A) или отдельный модуль (B).  
-- [ ] MVP = конец Phase 2 (+ опционально заготовки Phase 3 в схеме).  
-- [ ] Telegram/Max не блокируют закрытие lifecycle Phase 2.1–2.3.  
-- [ ] Подтверждён режим: **поэтапная ручная приёмка**, без делегирования всего проекта.  
-- [x] Субагенты: `.cursor/agents/manager.md`, `developer.md`, `tester.md`.
+**Зачем:** надёжность и удобство в проде после рабочего MVP.
+
+**Статус фазы:** ⏳ не начата  
+**Старт только после:** Phase 3 → ✅ принята (или явное решение начать раньше точечно)
+
+### 4.1. Реакция на изменения в БД
+
+- [ ] `LISTEN/NOTIFY` + периодический poll как safety net
+
+### 4.2. Устойчивость процессов
+
+- [ ] Restart policy / backoff
+- [ ] Лимиты числа ботов на ноду
+
+### 4.3. Наблюдаемость и сопровождение
+
+- [ ] Метрики (slog-счётчики или Prometheus)
+- [ ] Улучшение хранения секретов токенов
+- [ ] Опционально: `doctor`, `drain-node`
+- [ ] Опционально: шардирование нескольких runner’ов
+
+### Закрытие Phase 4
+
+- [ ] Согласованный набор пунктов 4.x закрыт
+- [ ] **Принято вами**
 
 ---
 
-## 12. Следующий шаг
+## Открытые решения (до старта кода)
 
-1. Пользователь выдаёт manager **одно** задание (например: «Phase 0 / T01–T04» или только T01).  
-2. Manager → developer → tester (≤2 доработки) → отчёт manager пользователю.  
-3. Пользователь проверяет по инструкции → ок → следующее задание.  
-4. **Не** запускать Phase N+1, пока Phase N не принята вручную.
+Отметьте вместе с manager перед Phase 0:
+
+- [ ] Имя Go-модуля / module path
+- [ ] `bot-runner` в monorepo (**A**) или отдельно (**B**) — по умолчанию **A**
+- [ ] Граница MVP: обычно конец Phase 2; Phase 3 — масштабирование
+- [ ] Telegram/Max не блокируют закрытие пунктов 2.2–2.4
 
 ---
 
-## 13. Антипаттерны процесса
+## Как читать отчёт manager
 
-- Отдать manager «сделай весь MVP / все фазы».  
-- Developer сам переходит к следующей задаче плана без нового задания от manager.  
-- Tester чинит код вместо возврата developer.  
-- Больше двух кругов доработки без эскалации manager.  
-- Manager объявляет этап закрытым без ручной проверки пользователя.
+После каждого задания вы получите:
+
+1. что сделано и какие пункты плана отмечены `[x]`;
+2. вердикт tester;
+3. **как проверить вручную** (команды);
+4. что сознательно не входило в задание.
+
+Вы проверяете → пишете «ок» / замечания → только потом следующее задание.
