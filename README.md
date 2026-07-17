@@ -60,11 +60,54 @@ export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
 | Бинарник | Роль |
 |---|---|
 | `agent` | Heartbeat + reconcile: custom_bot и bot_runner через supervisor |
-| `bot-runner` | Multi-tenant: N default* в **одном** OS-процессе (webhook `/healthz` / polling-stub) |
+| `bot-runner` | Multi-tenant: N default* в **одном** OS-процессе; сценарий `default` отвечает на `/start` (Telegram / Max) |
 | `healthcheck` | Опрос `GET /healthz` у webhook; пишет unhealthy в store; **не** рестартует процессы |
 | `ctl` | CRUD desired-состояния в том же store |
 
 **Policy восстановления unhealthy:** healthcheck ставит `actual_state=failed` и `last_error` с префиксом `healthcheck:`; agent при следующем reconcile делает Stop+Start всего `bot_runner`. Runner заново поднимает инстансы со «здоровым» `/healthz`.
+
+### token_ref
+
+Поле `bots.token_ref` резолвится так (`internal/launch.ResolveTokenRef`):
+
+| Значение | Результат |
+|---|---|
+| обычная строка | используется как токен напрямую (MVP / `ctl --token`) |
+| `env:NAME` | `os.Getenv("NAME")` |
+| `$NAME` | то же |
+
+Полный токен в slog не пишется (только `TokenHint`: длина / хвост).
+
+### Мессенджеры (Phase 2.5)
+
+- **Telegram** (`channel=telegram`): тонкий `net/http` к Bot API (`getUpdates` / `sendMessage`). Режимы:
+  - `polling` — long poll, ответ на `/start`;
+  - `webhook` — `GET /healthz` + приём `POST /` или `POST /webhook` с JSON Update. Исходящий `setWebhook` к Telegram **не** вызывается без публичного HTTPS `PUBLIC_URL` (best effort: можно POST-нуть Update локально или через туннель).
+- **Max** (`channel=max`): HTTP к `https://platform-api2.max.ru` (`Authorization`, `GET /updates`, `POST /messages`). На `/start` и событие `bot_started` — то же приветствие. Live нужен токен бота с [dev.max.ru](https://dev.max.ru). Каналы независимы: max-бот не мешает telegram в том же runner.
+
+#### Ручная проверка с живым Telegram
+
+```bash
+export TELEGRAM_BOT_TOKEN="123456:ABC-DEF"   # от @BotFather
+export NODE_ID=node-1 STORE=memory MEMORY_STORE_PATH=.mvp-manager/store.json
+export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
+# терминал 1
+go run ./cmd/agent
+# терминал 2
+go run ./cmd/ctl bots create --type default --name tg --port 18090 \
+  --token 'env:TELEGRAM_BOT_TOKEN' --mode polling --channel telegram
+go run ./cmd/ctl bots start <bot-id>
+# В Telegram напишите боту /start — ожидайте приветствие.
+```
+
+Либо webhook: поднимите HTTPS-туннель на порт бота и зарегистрируйте webhook вручную (`setWebhook`); локально можно:
+
+```bash
+curl -s -X POST http://127.0.0.1:18081/webhook \
+  -H 'Content-Type: application/json' \
+  -d '{"update_id":1,"message":{"text":"/start","chat":{"id":1}}}'
+# без живого API ответ не уйдёт (sendMessage к api.telegram.org), но путь обработки тот же, что в unit-тестах с httptest.
+```
 
 ## Phase 1: custom (fake-bot)
 
@@ -144,6 +187,8 @@ go test ./internal/store/...
 go test ./internal/store/memory/...
 go test ./internal/supervisor/...
 go test ./internal/reconcile/...
+go test ./internal/launch/...
+go test ./internal/messenger/...
 go test ./internal/runner/...
 go test ./internal/health/...
 ```

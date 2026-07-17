@@ -21,19 +21,23 @@ const (
 // BuildEnv собирает полное окружение для Start custom-бота:
 // os.Environ() + обязательные PORT/BOT_TOKEN/BOT_MODE/CHANNEL и опциональный PUBLIC_URL.
 //
-// BOT_TOKEN берётся из bot.TokenRef (в MVP токен лежит прямо в поле, без vault).
-func BuildEnv(bot store.Bot, publicURL string) []string {
+// BOT_TOKEN резолвится из bot.TokenRef (см. ResolveTokenRef).
+func BuildEnv(bot store.Bot, publicURL string) ([]string, error) {
+	token, err := ResolveTokenRef(bot.TokenRef)
+	if err != nil {
+		return nil, fmt.Errorf("resolve token_ref: %w", err)
+	}
 	env := os.Environ()
 	env = append(env,
 		EnvPort+"="+strconv.Itoa(bot.Port),
-		EnvBotToken+"="+bot.TokenRef,
+		EnvBotToken+"="+token,
 		EnvBotMode+"="+string(bot.RunMode),
 		EnvChannel+"="+string(bot.Channel),
 	)
 	if publicURL != "" {
 		env = append(env, EnvPublicURL+"="+publicURL)
 	}
-	return env
+	return env, nil
 }
 
 // ValidateCustomCreate проверяет минимальные поля для ctl bots create (custom).

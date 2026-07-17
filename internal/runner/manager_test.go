@@ -133,3 +133,52 @@ func waitHTTP(t *testing.T, port int) {
 	}
 	t.Fatalf("timeout waiting healthz on :%d", port)
 }
+
+// TestSyncMaxAndTelegram — channel=max и telegram в одном Manager, оба /healthz.
+func TestSyncMaxAndTelegram(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	nodeID := "node-ch"
+	rtID := "runtime-ch"
+	nodeRef := nodeID
+
+	_, err := st.Runtimes.Create(ctx, store.Runtime{
+		ID: rtID, Kind: store.RuntimeKindBotRunner, Name: "bot-runner-ch",
+		StartCommand: "x", DesiredState: store.DesiredRunning, AssignedNodeID: &nodeRef,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tg, err := st.Bots.Create(ctx, store.Bot{
+		Name: "tg", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModeWebhook,
+		Port: 19194, TokenRef: "t-tg", RuntimeID: &rtID,
+		DesiredState: store.DesiredRunning, AssignedNodeID: &nodeRef,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mx, err := st.Bots.Create(ctx, store.Bot{
+		Name: "mx", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelMax, RunMode: store.BotRunModeWebhook,
+		Port: 19195, TokenRef: "t-mx", RuntimeID: &rtID,
+		DesiredState: store.DesiredRunning, AssignedNodeID: &nodeRef,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := runner.New(nodeID, rtID, st.Bots)
+	if err := mgr.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = st.Bots.UpdateDesiredState(ctx, tg.ID, store.DesiredStopped)
+		_ = st.Bots.UpdateDesiredState(ctx, mx.ID, store.DesiredStopped)
+		_ = mgr.Sync(ctx)
+	})
+
+	waitHTTP(t, 19194)
+	waitHTTP(t, 19195)
+}

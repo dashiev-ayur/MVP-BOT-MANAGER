@@ -1,6 +1,7 @@
 // Точка входа multi-tenant bot-runner: один OS-процесс — N default*-инстансов.
 //
-// Phase 2: lifecycle без реального Telegram/Max. Общий MEMORY_STORE_PATH с agent.
+// Phase 2.5: сценарий default отвечает на /start (Telegram / Max); lifecycle add/remove/reload.
+// Общий MEMORY_STORE_PATH с agent.
 package main
 
 import (

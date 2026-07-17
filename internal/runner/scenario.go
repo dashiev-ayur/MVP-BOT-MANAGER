@@ -9,13 +9,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"mvp-manager/internal/launch"
+	"mvp-manager/internal/messenger"
 	"mvp-manager/internal/store"
 )
 
 // instance — один логический бот внутри процесса runner.
 //
-// webhook: HTTP server на bot.Port с GET /healthz;
-// polling: горутина без bind (порт зарезервирован в store, но не слушается).
+// webhook: HTTP server на bot.Port с GET /healthz + POST webhook updates;
+// polling: long poll канала (порт зарезервирован в store, но не слушается).
 type instance struct {
 	bot store.Bot
 
@@ -26,6 +28,7 @@ type instance struct {
 	unhealthy atomic.Bool
 
 	srv *http.Server
+	ch  messenger.Channel
 }
 
 // fingerprint — что считать «конфигом инстанса» для reload.
@@ -35,6 +38,7 @@ type fingerprint struct {
 	runMode       store.BotRunMode
 	port          int
 	botType       store.BotType
+	channel       store.BotChannel
 }
 
 func fpOf(b store.Bot) fingerprint {
@@ -44,10 +48,11 @@ func fpOf(b store.Bot) fingerprint {
 		runMode:       b.RunMode,
 		port:          b.Port,
 		botType:       b.BotType,
+		channel:       b.Channel,
 	}
 }
 
-// startInstance поднимает сценарий default* для бота.
+// startInstance поднимает сценарий default* для бота (Telegram или Max).
 func startInstance(parent context.Context, bot store.Bot, log *slog.Logger) (*instance, error) {
 	ctx, cancel := context.WithCancel(parent)
 	inst := &instance{
@@ -58,11 +63,29 @@ func startInstance(parent context.Context, bot store.Bot, log *slog.Logger) (*in
 
 	switch bot.BotType {
 	case store.BotTypeDefault, store.BotTypeDefaultExtended:
-		// default_extended на Phase 2 — тот же stub, что default (мессенджеры в 2.5).
+		// default_extended на Phase 2.5 — тот же сценарий /start, что default.
 	default:
 		cancel()
 		return nil, fmt.Errorf("unsupported bot_type %q in runner", bot.BotType)
 	}
+
+	token, err := launch.ResolveTokenRef(bot.TokenRef)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("resolve token_ref: %w", err)
+	}
+	ch, err := messenger.NewChannel(bot.Channel, token, nil, "")
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	inst.ch = ch
+	log.Info("messenger ready",
+		"bot_id", bot.ID,
+		"channel", bot.Channel,
+		"mode", bot.RunMode,
+		"token", launch.TokenHint(token),
+	)
 
 	switch bot.RunMode {
 	case store.BotRunModeWebhook:
@@ -80,7 +103,17 @@ func startInstance(parent context.Context, bot store.Bot, log *slog.Logger) (*in
 	return inst, nil
 }
 
-// startWebhook слушает уникальный port бота и отдаёт /healthz.
+// onIncoming — обработчик сценария default (ответ на /start).
+func (inst *instance) onIncoming(ctx context.Context, in messenger.Incoming) error {
+	_, err := messenger.HandleDefaultStart(ctx, inst.ch, in)
+	return err
+}
+
+// startWebhook слушает уникальный port бота: /healthz + webhook updates.
+//
+// Важно: setWebhook в Telegram/Max здесь НЕ вызывается — для этого нужен
+// публичный HTTPS PUBLIC_URL. Локально можно POST-нуть Update на порт бота
+// (best effort) или использовать run_mode=polling.
 func (inst *instance) startWebhook(ctx context.Context, log *slog.Logger) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -111,10 +144,22 @@ func (inst *instance) startWebhook(ctx context.Context, log *slog.Logger) error 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("healthy\n"))
 	})
-	// Заглушка логики сценария default (без реального Telegram / Max).
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+	// Приём updates: POST /webhook или POST / (кроме /healthz — отдельный путь).
+	webhook := func(w http.ResponseWriter, r *http.Request) {
+		inst.ch.ServeWebhook(w, r, inst.onIncoming)
+	}
+	mux.HandleFunc("/webhook", webhook)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method == http.MethodPost {
+			webhook(w, r)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("default-scenario stub\n"))
+		_, _ = w.Write([]byte("default-scenario ready\n"))
 	})
 
 	addr := fmt.Sprintf(":%d", inst.bot.Port)
@@ -126,7 +171,7 @@ func (inst *instance) startWebhook(ctx context.Context, log *slog.Logger) error 
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("webhook listen", "bot_id", inst.bot.ID, "port", inst.bot.Port)
+		log.Info("webhook listen", "bot_id", inst.bot.ID, "port", inst.bot.Port, "channel", inst.bot.Channel)
 		err := inst.srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			errCh <- err
@@ -164,23 +209,17 @@ func (inst *instance) startWebhook(ctx context.Context, log *slog.Logger) error 
 	return nil
 }
 
-// startPolling — горутина без bind порта (порт только зарезервирован в store).
+// startPolling — long poll канала мессенджера (порт только зарезервирован в store).
 func (inst *instance) startPolling(ctx context.Context, log *slog.Logger) {
 	go func() {
 		defer close(inst.done)
-		log.Info("polling stub running", "bot_id", inst.bot.ID, "port_reserved", inst.bot.Port)
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info("polling stub stopped", "bot_id", inst.bot.ID)
-				return
-			case <-ticker.C:
-				// Заглушка: «опрос» мессенджера не делается (Phase 2.5).
-				log.Debug("polling stub tick", "bot_id", inst.bot.ID)
-			}
+		log.Info("polling start", "bot_id", inst.bot.ID, "channel", inst.bot.Channel, "port_reserved", inst.bot.Port)
+		err := inst.ch.RunPolling(ctx, inst.onIncoming)
+		if err != nil && ctx.Err() == nil {
+			log.Warn("polling stopped", "bot_id", inst.bot.ID, "err", err)
+			return
 		}
+		log.Info("polling stopped", "bot_id", inst.bot.ID)
 	}()
 }
 

@@ -31,7 +31,7 @@
 
 Общий JSON (`MEMORY_STORE_PATH`, по умолчанию `.mvp-manager/store.json`) обязателен для **agent**, **ctl**, **bot-runner** и **healthcheck**. Без одного пути процессы не разделяют bots/runtimes.
 
-**После Phase 2 (2.1–2.4):** multi-tenant `bot-runner` (≥2 default в одном PID), отдельный `healthcheck` (пишет unhealthy, не рестартит), агент восстанавливает runner; custom Phase 1 сохранён. Мессенджеры (2.5 Telegram/Max) — отдельным заданием. Образец ENV — [`.env.example`](../.env.example). Полные команды — корневой [`README.md`](../README.md).
+**После Phase 2 (2.1–2.4 + 2.5):** multi-tenant `bot-runner`, `healthcheck`, custom Phase 1; сценарий `default` отвечает на `/start` в **Telegram** (polling / webhook) и **Max**; `token_ref` резолвится из значения или ENV (`env:NAME` / `$NAME`). Образец ENV — [`.env.example`](../.env.example). Полные команды и live-проверка Telegram — корневой [`README.md`](../README.md), `scripts/manual-telegram-start.sh`.
 
 ```bash
 go build -o bin/agent ./cmd/agent
@@ -40,15 +40,11 @@ go build -o bin/bot-runner ./cmd/bot-runner
 go build -o bin/healthcheck ./cmd/healthcheck
 export NODE_ID=node-1 STORE=memory MEMORY_STORE_PATH=.mvp-manager/store.json
 export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
-./bin/agent
-# другой терминал — тот же MEMORY_STORE_PATH:
-./bin/healthcheck
-./bin/ctl bots create --type default --name a --port 18081 --token t1 --mode webhook
-./bin/ctl bots create --type default --name b --port 18082 --token t2 --mode webhook
-./bin/ctl bots start <id-a> && ./bin/ctl bots start <id-b>
 ./scripts/e2e-phase2.sh
-./scripts/e2e-phase1.sh   # custom по-прежнему
-go test ./internal/runner/... ./internal/health/... ./internal/reconcile/...
+./scripts/e2e-phase1.sh
+go test ./internal/messenger/... ./internal/launch/... ./internal/runner/...
+# live Telegram (нужен токен бота):
+# TELEGRAM_BOT_TOKEN=... ./scripts/manual-telegram-start.sh
 ```
 
 `STORE=postgres` пока отклоняется с понятной ошибкой (Phase PG), без dial БД.
@@ -91,15 +87,15 @@ Go-модуль: **`mvp-manager`**. `bot-runner` — в этом же репоз
 ```
 
 ```text
-/manager Phase 2 целиком (2.1–2.4; без мессенджеров 2.5)
+/manager Phase 2.5 (Telegram + Max для default)
 ```
 
 ```text
-/manager Только Phase 2.4 (healthcheck)
+/manager Пользователь принял Phase 2.5 — отметь «Принято вами»
 ```
 
 ```text
-/manager Пользователь принял Phase 2 — отметь «Принято вами» и обнови сводку
+/manager Phase PG — локальный docker compose Postgres
 ```
 
 ### Способ 2 — без слэша

@@ -289,11 +289,22 @@ func (l *Loop) ensureRunning(ctx context.Context, rt store.Runtime, snap supervi
 		workdir = launch.WorkdirFromBot(bot)
 	}
 
+	env, err := launch.BuildEnv(bot, l.PublicURL)
+	if err != nil {
+		msg := err.Error()
+		_ = l.Runtimes.UpdateActual(ctx, rt.ID, store.RuntimeActualPatch{
+			ActualState: store.ActualFailed,
+			LastError:   &msg,
+		})
+		l.syncBotsActual(ctx, rt.ID, store.ActualFailed, &msg)
+		return fmt.Errorf("runtime %s: build env: %w", rt.ID, err)
+	}
+
 	pid, err := l.Supervisor.Start(ctx, supervisor.Spec{
 		ID:      rt.ID,
 		Command: cmd,
 		Workdir: workdir,
-		Env:     launch.BuildEnv(bot, l.PublicURL),
+		Env:     env,
 	})
 	if err != nil {
 		msg := err.Error()
