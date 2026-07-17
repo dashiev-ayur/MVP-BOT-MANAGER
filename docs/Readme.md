@@ -31,6 +31,19 @@
 
 Данные сбросятся при рестарте процесса — для ранних этапов это ожидаемо.
 
+**Каркас:** модуль `mvp-manager`, `cmd/ctl` (help/version), `cmd/agent` читает ENV (`NODE_ID`, `STORE=memory` по умолчанию) через `internal/config`. Образец ENV — [`.env.example`](../.env.example). Сборка и запуск:
+
+```bash
+go build ./cmd/agent ./cmd/ctl
+export NODE_ID=node-1
+go run ./cmd/agent          # slog: node_id / store
+go run ./cmd/agent --version
+go run ./cmd/ctl --help
+go test ./internal/config/...
+```
+
+Команды и таблица ENV — также в корневом [`README.md`](../README.md). Memory store и wiring — блоки 0.3–0.4.
+
 ### Позже (PostgreSQL) — Phase PG
 
 Когда пользователь даст инструкции по запуску БД (или попросит локальный compose):

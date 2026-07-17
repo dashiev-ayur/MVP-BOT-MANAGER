@@ -31,7 +31,7 @@
 
 | Фаза | Название | Статус |
 |---|---|---|
-| 0 | Каркас + in-memory store | ⏳ не начата |
+| 0 | Каркас + in-memory store | 🚧 в работе |
 | 1 | Custom-бот + supervisor + ctl | ⏳ не начата |
 | 2 | Multi-tenant runner + healthcheck | ⏳ не начата |
 | PG | PostgreSQL (адаптер store) | ⏳ не начата |
@@ -47,24 +47,26 @@
 
 **Зачем:** собираемый каркас + **хранилище в памяти** за интерфейсами (бизнес-логика не знает про Postgres).
 
-**Статус фазы:** ⏳ не начата
+**Статус фазы:** 🚧 в работе *(0.1–0.2 приняты вами; далее 0.3–0.4)*
 
 ### 0.1. Go-модуль и структура каталогов
 
-- [ ] Инициализировать Go-модуль: `mvp-manager`
-- [ ] Каталоги: `cmd/agent`, `cmd/ctl`, `internal/config`, `internal/store` (интерфейсы), `internal/store/memory`
-- [ ] Заглушки `main.go` (версия / help)
-- [ ] `.gitignore` уже есть — проверить актуальность
-- [ ] Короткий корневой `README.md` (что это, `STORE=memory`, как запускать)
+- [x] Инициализировать Go-модуль: `mvp-manager`
+- [x] Каталоги: `cmd/agent`, `cmd/ctl`, `internal/config`, `internal/store` (интерфейсы), `internal/store/memory`
+- [x] Заглушки `main.go` (версия / help)
+- [x] `.gitignore` уже есть — проверить актуальность
+- [x] Короткий корневой `README.md` (что это, `STORE=memory`, как запускать)
+- [x] **Принято вами** (2026-07-17)
 
 **Проверка:** `go build ./cmd/agent ./cmd/ctl`  
 *( `cmd/migrate` — не в этой фазе, появится с PostgreSQL )*
 
 ### 0.2. Конфиг
 
-- [ ] `internal/config` — чтение из ENV
-- [ ] `.env.example`: `NODE_ID`, `STORE=memory` (позже `postgres` + DSN)
-- [ ] Без обязательного Docker/Postgres на этом этапе
+- [x] `internal/config` — чтение из ENV
+- [x] `.env.example`: `NODE_ID`, `STORE=memory` (позже `postgres` + DSN)
+- [x] Без обязательного Docker/Postgres на этом этапе
+- [x] **Принято вами** (2026-07-17)
 
 **Проверка:** конфиг читается; неизвестный `STORE` — понятная ошибка
 

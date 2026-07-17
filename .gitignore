@@ -19,9 +19,10 @@ dist/
 coverage.html
 coverage.txt
 
-# Go workspace (local)
+# Go workspace / vendor (local)
 go.work
 go.work.sum
+vendor/
 
 # Environment and secrets
 .env
