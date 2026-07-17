@@ -1,6 +1,9 @@
-// Package memory — in-memory реализация интерфейсов store.
+// Package memory — потокобезопасная in-memory реализация интерфейсов
+// store.NodeRepository, store.RuntimeRepository и store.BotRepository.
 //
-// Сейчас пакет-заглушка (Phase 0.1): каталог входит в модуль.
-// Потокобезопасное хранилище (mutex) и wiring STORE=memory
-// будут добавлены в Phase 0.4. Данные живут, пока жив процесс агента.
+// Данные живут только в памяти процесса: рестарт агента/ctl обнуляет состояние.
+// Инварианты ТЗ §6 (UNIQUE port, UNIQUE runtime name, custom_name ↔ bot_type)
+// проверяются при Create/Update и возвращают sentinel-ошибки package store.
+//
+// Wiring: STORE=memory в cmd/agent и cmd/ctl (Phase 0.4). Postgres — Phase PG.
 package memory

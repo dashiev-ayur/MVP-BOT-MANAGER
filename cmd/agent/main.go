@@ -1,16 +1,21 @@
 // Точка входа демона agent: на каждой ноде следит за desired/actual
 // состоянием ботов и управляет процессами (Phase 1+).
 //
-// Phase 0.2: при обычном запуске загружает конфиг из ENV и пишет
-// NODE_ID/STORE в лог (без wiring store). Help/version без изменений по смыслу.
+// Phase 0.4: Load конфига → wiring STORE=memory → регистрация ноды →
+// ожидание SIGINT/SIGTERM и тихий выход. Без reconcile loop.
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"mvp-manager/internal/config"
+	"mvp-manager/internal/store"
+	"mvp-manager/internal/storeopen"
 )
 
 // version — строка версии бинарника; позже можно подставлять через -ldflags.
@@ -25,7 +30,7 @@ const helpText = `mvp-manager agent — демон управления бота
   agent
 
 При запуске без флагов читает конфиг из ENV (NODE_ID, STORE; по умолчанию
-STORE=memory) и пишет значения в лог. Memory store и reconcile появятся позже.
+STORE=memory), создаёт store, регистрирует ноду и ждёт SIGINT/SIGTERM.
 См. .env.example и README.
 `
 
@@ -43,17 +48,46 @@ func main() {
 		}
 	}
 
-	// Обычный запуск: демонстрируем чтение конфига (Phase 0.2).
-	// Store не создаём — wiring memory/postgres в блоках 0.4 / Phase PG.
 	cfg, err := config.Load()
 	if err != nil {
-		// Пользовательское сообщение на stderr; код выхода 1 — не паника.
 		fmt.Fprintf(os.Stderr, "agent: конфиг: %v\n", err)
+		os.Exit(1)
+	}
+
+	st, storeKind, err := storeopen.Open(cfg.Store)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "agent: store: %v\n", err)
 		os.Exit(1)
 	}
 
 	slog.Info("конфиг загружен",
 		"node_id", cfg.NodeID,
-		"store", cfg.Store,
+		"store", storeKind,
 	)
+
+	// Регистрация ноды в store (Upsert по NODE_ID) — агент «появляется» в реестре.
+	hostname, herr := os.Hostname()
+	if herr != nil || hostname == "" {
+		hostname = cfg.NodeID
+	}
+	ver := version
+	ctx := context.Background()
+	if _, err := st.Nodes.Upsert(ctx, store.Node{
+		ID:           cfg.NodeID,
+		Hostname:     hostname,
+		Status:       store.NodeStatusOnline,
+		AgentVersion: &ver,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "agent: регистрация ноды: %v\n", err)
+		os.Exit(1)
+	}
+	slog.Info("нода зарегистрирована", "node_id", cfg.NodeID, "hostname", hostname)
+
+	// Ждём SIGINT/SIGTERM: context отменяется → тихий выход без reconcile (Phase 1).
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	slog.Info("agent запущен, ожидание сигнала завершения")
+	<-runCtx.Done()
+	// Тихий выход: без лишнего Fatal/паники; defer stop снимет обработчики сигналов.
 }

@@ -1,13 +1,17 @@
 // Точка входа CLI ctl: обёртка над операциями store (создание ботов,
 // смена desired state и т.п.). Не смешивается с демоном agent.
 //
-// Сейчас — заглушка Phase 0.1: печатает version/help и завершается.
-// Реальные подкоманды появятся в следующих фазах.
+// Phase 0.4: при обычном запуске Load + wiring STORE=memory (подтверждение
+// в логе). Подкоманды bots* — Phase 1.
 package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+
+	"mvp-manager/internal/config"
+	"mvp-manager/internal/storeopen"
 )
 
 // version — строка версии бинарника; позже можно подставлять через -ldflags.
@@ -19,14 +23,15 @@ const helpText = `mvp-manager ctl — CLI управления ботами (о�
 Использование:
   ctl [-h|--help]
   ctl [-v|--version]
+  ctl
 
-Пока это заглушка каркаса (Phase 0.1). Подкоманды появятся позже.
+При запуске без флагов читает конфиг (NODE_ID, STORE) и создаёт store.
+Подкоманды bots create/start/stop появятся в Phase 1.
 Хранилище на ранних этапах: STORE=memory.
 `
 
 func main() {
-	// Минимальный разбор флагов: help / version; остальное — тоже help,
-	// чтобы запуск без аргументов и с неизвестными флагами не паниковал.
+	// Help / version без NODE_ID — как у agent.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "-v", "--version", "version":
@@ -38,6 +43,20 @@ func main() {
 		}
 	}
 
-	// Запуск без аргументов: показываем help (ожидаемое поведение заглушки).
-	fmt.Print(helpText)
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ctl: конфиг: %v\n", err)
+		os.Exit(1)
+	}
+
+	_, storeKind, err := storeopen.Open(cfg.Store)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ctl: store: %v\n", err)
+		os.Exit(1)
+	}
+
+	slog.Info("ctl: store готов",
+		"node_id", cfg.NodeID,
+		"store", storeKind,
+	)
 }

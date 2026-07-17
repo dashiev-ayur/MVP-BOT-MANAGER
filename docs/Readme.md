@@ -31,18 +31,18 @@
 
 Данные сбросятся при рестарте процесса — для ранних этапов это ожидаемо.
 
-**Каркас:** модуль `mvp-manager`, `cmd/ctl` (help/version), `cmd/agent` читает ENV (`NODE_ID`, `STORE=memory` по умолчанию) через `internal/config`. Образец ENV — [`.env.example`](../.env.example). Сборка и запуск:
+**После Phase 0 (0.1–0.4):** модуль `mvp-manager`, конфиг из ENV, порт `internal/store` + реализация `internal/store/memory`, wiring `STORE=memory` в `agent`/`ctl`. Образец ENV — [`.env.example`](../.env.example). Команды и таблица ENV — в корневом [`README.md`](../README.md).
 
 ```bash
-go build ./cmd/agent ./cmd/ctl
-export NODE_ID=node-1
-go run ./cmd/agent          # slog: node_id / store
-go run ./cmd/agent --version
-go run ./cmd/ctl --help
-go test ./internal/config/...
+go build -o bin/agent ./cmd/agent
+go build -o bin/ctl ./cmd/ctl
+export NODE_ID=node-1 STORE=memory
+./bin/agent          # slog: store=memory, регистрация ноды; ждёт SIGINT/SIGTERM
+# Ctrl+C или: kill -TERM <pid>  → тихий выход
+go test ./internal/config/... ./internal/store/...
 ```
 
-Команды и таблица ENV — также в корневом [`README.md`](../README.md). Memory store и wiring — блоки 0.3–0.4.
+`STORE=postgres` пока отклоняется с понятной ошибкой (Phase PG), без dial БД. Reconcile / supervisor / `ctl bots*` — Phase 1.
 
 ### Позже (PostgreSQL) — Phase PG
 

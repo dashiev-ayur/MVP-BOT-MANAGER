@@ -31,7 +31,7 @@
 
 | Фаза | Название | Статус |
 |---|---|---|
-| 0 | Каркас + in-memory store | 🚧 в работе |
+| 0 | Каркас + in-memory store | ✅ принята |
 | 1 | Custom-бот + supervisor + ctl | ⏳ не начата |
 | 2 | Multi-tenant runner + healthcheck | ⏳ не начата |
 | PG | PostgreSQL (адаптер store) | ⏳ не начата |
@@ -47,7 +47,7 @@
 
 **Зачем:** собираемый каркас + **хранилище в памяти** за интерфейсами (бизнес-логика не знает про Postgres).
 
-**Статус фазы:** 🚧 в работе *(0.1–0.2 приняты вами; далее 0.3–0.4)*
+**Статус фазы:** ✅ принята
 
 ### 0.1. Go-модуль и структура каталогов
 
@@ -72,26 +72,28 @@
 
 ### 0.3. Порт хранилища (SOLID / DIP)
 
-- [ ] Узкие интерфейсы в `internal/store` (BotRepository, RuntimeRepository, NodeRepository или эквивалент) — **без** импорта `pgx`/SQL
-- [ ] Домен/`reconcile` зависят **только** от интерфейсов
-- [ ] Запрещено: тащить драйвер БД в `internal/reconcile`, `internal/supervisor`, сценарии runner
+- [x] Узкие интерфейсы в `internal/store` (BotRepository, RuntimeRepository, NodeRepository или эквивалент) — **без** импорта `pgx`/SQL
+- [x] Домен/`reconcile` зависят **только** от интерфейсов
+- [x] Запрещено: тащить драйвер БД в `internal/reconcile`, `internal/supervisor`, сценарии runner
+- [x] **Принято вами** (2026-07-17)
 
 **Проверка:** пакеты бизнес-логики не импортируют `jackc/pgx` и `database/sql`
 
 ### 0.4. Реализация in-memory
 
-- [ ] `internal/store/memory` — потокобезопасное хранилище (mutex)
-- [ ] Те же инварианты, что в модели ТЗ: UNIQUE port, custom_name для custom, desired/actual
-- [ ] Данные живут, пока жив процесс (рестарт агента = пустое состояние — ок для этапа)
-- [ ] Wiring в `agent`/`ctl`: `STORE=memory` → memory store
-- [ ] Корректное завершение по SIGINT/SIGTERM
+- [x] `internal/store/memory` — потокобезопасное хранилище (mutex)
+- [x] Те же инварианты, что в модели ТЗ: UNIQUE port, custom_name для custom, desired/actual
+- [x] Данные живут, пока жив процесс (рестарт агента = пустое состояние — ок для этапа)
+- [x] Wiring в `agent`/`ctl`: `STORE=memory` → memory store
+- [x] Корректное завершение по SIGINT/SIGTERM
+- [x] **Принято вами** (2026-07-17)
 
 **Проверка:** `agent` стартует с memory store, пишет в лог тип хранилища, тихо выходит по сигналу
 
 ### Закрытие Phase 0
 
-- [ ] Все подпункты 0.1–0.4 отмечены `[x]`
-- [ ] **Принято вами** (после вашей ручной проверки)
+- [x] Все подпункты 0.1–0.4 отмечены `[x]`
+- [x] **Принято вами** (2026-07-17)
 
 ---
 
