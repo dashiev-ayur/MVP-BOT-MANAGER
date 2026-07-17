@@ -11,7 +11,14 @@
 2. Файл [`.env.example`](./.env.example) с переменными launch contract.
 3. Краткую инструкцию запуска (этот README).
 
-Утилита `cmd/handoff` (автосборка архива) — опциональна и может появиться в Phase 4.
+Утилита `cmd/handoff` копирует этот шаблон в каталог выдачи и подставляет
+имя/порт/токен-плейсхолдер:
+
+```bash
+go run ./cmd/handoff --out /tmp/client-bot --name acme --port 18080 \
+  --token-placeholder 'env:ACME_BOT_TOKEN'
+```
+
 
 ## Launch contract (ENV)
 

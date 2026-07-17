@@ -16,6 +16,7 @@ import (
 
 	"mvp-manager/internal/config"
 	"mvp-manager/internal/launch"
+	"mvp-manager/internal/metrics"
 	"mvp-manager/internal/ops"
 	"mvp-manager/internal/store"
 )
@@ -42,6 +43,7 @@ func New(cfg config.Config, repos ops.Repos) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("GET /v1/nodes", s.auth(s.handleListNodes))
 	mux.HandleFunc("GET /v1/bots", s.auth(s.handleListBots))
 	mux.HandleFunc("POST /v1/bots", s.auth(s.handleCreateBot))
@@ -76,6 +78,13 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
+// handleMetrics — простой text exposition счётчиков (без Prometheus scrape-обязательности).
+func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(metrics.Default.Text()))
+}
+
 func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 	list, err := s.Repos.Nodes.List(r.Context())
 	if err != nil {
@@ -91,7 +100,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	writeJSON(w, http.StatusOK, maskBots(list))
 }
 
 func (s *Server) handleListRuntimes(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +128,7 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleStartBot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := ops.Start(r.Context(), s.Repos, id); err != nil {
+	if err := ops.StartWithLimit(r.Context(), s.Repos, id, s.Cfg.MaxBotsPerNode); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
@@ -211,16 +220,19 @@ func (s *Server) handleCreateBot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.DesiredState == store.DesiredRunning {
-		if err := ops.Start(ctx, s.Repos, bot.ID); err != nil {
+		if err := ops.StartWithLimit(ctx, s.Repos, bot.ID, s.Cfg.MaxBotsPerNode); err != nil {
 			writeStoreErr(w, err)
 			return
 		}
 		bot, _ = s.Repos.Bots.ByID(ctx, bot.ID)
 	}
-	writeJSON(w, http.StatusCreated, bot)
+	writeJSON(w, http.StatusCreated, maskBot(bot))
 }
 
 func (s *Server) createCustom(ctx context.Context, body createBotBody, nodeID string) (store.Bot, error) {
+	if err := ops.CheckBotLimit(ctx, s.Repos.Bots, nodeID, s.Cfg.MaxBotsPerNode, true); err != nil {
+		return store.Bot{}, err
+	}
 	cn := ""
 	if body.CustomName != nil {
 		cn = *body.CustomName
@@ -251,7 +263,7 @@ func (s *Server) createCustom(ctx context.Context, body createBotBody, nodeID st
 		return store.Bot{}, err
 	}
 	sc := startCmd
-	return s.Repos.Bots.Create(ctx, store.Bot{
+	bot, err := s.Repos.Bots.Create(ctx, store.Bot{
 		Name:           body.Name,
 		BotType:        store.BotTypeCustom,
 		CustomName:     &cn,
@@ -266,9 +278,17 @@ func (s *Server) createCustom(ctx context.Context, body createBotBody, nodeID st
 		ActualState:    store.ActualUnknown,
 		AssignedNodeID: &nodeID,
 	})
+	if err != nil {
+		return store.Bot{}, err
+	}
+	launch.WarnIfPlaintextTokenRef(s.Log, bot.ID, body.TokenRef)
+	return bot, nil
 }
 
 func (s *Server) createDefault(ctx context.Context, body createBotBody, nodeID string) (store.Bot, error) {
+	if err := ops.CheckBotLimit(ctx, s.Repos.Bots, nodeID, s.Cfg.MaxBotsPerNode, true); err != nil {
+		return store.Bot{}, err
+	}
 	if err := launch.ValidateDefaultCreate(body.Name, body.Port, body.TokenRef); err != nil {
 		return store.Bot{}, err
 	}
@@ -297,7 +317,7 @@ func (s *Server) createDefault(ctx context.Context, body createBotBody, nodeID s
 	if err != nil {
 		return store.Bot{}, err
 	}
-	return s.Repos.Bots.Create(ctx, store.Bot{
+	bot, err := s.Repos.Bots.Create(ctx, store.Bot{
 		Name:           body.Name,
 		BotType:        body.BotType,
 		Channel:        body.Channel,
@@ -309,6 +329,11 @@ func (s *Server) createDefault(ctx context.Context, body createBotBody, nodeID s
 		ActualState:    store.ActualUnknown,
 		AssignedNodeID: &nodeID,
 	})
+	if err != nil {
+		return store.Bot{}, err
+	}
+	launch.WarnIfPlaintextTokenRef(s.Log, bot.ID, body.TokenRef)
+	return bot, nil
 }
 
 type patchBotBody struct {
@@ -353,7 +378,21 @@ func (s *Server) handlePatchBot(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, bot)
+	writeJSON(w, http.StatusOK, maskBot(bot))
+}
+
+// maskBot копирует бота с замаскированным token_ref для HTTP-ответов.
+func maskBot(b store.Bot) store.Bot {
+	b.TokenRef = launch.MaskTokenRef(b.TokenRef)
+	return b
+}
+
+func maskBots(list []store.Bot) []store.Bot {
+	out := make([]store.Bot, len(list))
+	for i, b := range list {
+		out[i] = maskBot(b)
+	}
+	return out
 }
 
 func decodeJSON(r *http.Request, dst any) error {
@@ -384,6 +423,8 @@ func writeStoreErr(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, store.ErrConflict), errors.Is(err, store.ErrInvalidArgument):
 		writeErr(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, store.ErrLimitExceeded):
+		writeErr(w, http.StatusConflict, err.Error())
 	default:
 		writeErr(w, http.StatusInternalServerError, err.Error())
 	}

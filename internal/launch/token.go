@@ -2,6 +2,7 @@ package launch
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -45,14 +46,50 @@ func ResolveTokenRef(ref string) (string, error) {
 }
 
 // TokenHint — безопасная строка для slog (без полного секрета).
+// Не включает хвост токена: только факт наличия и длина (Phase 4 hardening).
 func TokenHint(token string) string {
 	n := len(token)
 	if n == 0 {
 		return "empty"
 	}
-	if n <= 4 {
-		return "set(len=" + strconv.Itoa(n) + ")"
+	return "set(len=" + strconv.Itoa(n) + ")"
+}
+
+// IsEnvTokenRef — token_ref ссылается на ENV (env:NAME / $NAME), а не plaintext.
+func IsEnvTokenRef(ref string) bool {
+	ref = strings.TrimSpace(ref)
+	return strings.HasPrefix(ref, "env:") || strings.HasPrefix(ref, "$")
+}
+
+// MaskTokenRef — значение для API/ctl list: env-ссылки оставляем как есть,
+// plaintext маскируем (не светим полный секрет в выводе).
+func MaskTokenRef(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
 	}
-	// Только длина + 2 последних символа — достаточно отличить ботов в логах.
-	return "set(len=" + strconv.Itoa(n) + ",…)" + token[n-2:]
+	if IsEnvTokenRef(ref) {
+		return ref
+	}
+	n := len(ref)
+	if n <= 4 {
+		return "***"
+	}
+	// Префикс 2 + маска + хвост 2 — отличить записи, не раскрывая середину.
+	return ref[:2] + strings.Repeat("*", min(8, n-4)) + ref[n-2:]
+}
+
+// WarnIfPlaintextTokenRef пишет slog.Warn, если ref выглядит как сырой токен
+// (рекомендуется env:NAME). Полное значение в лог не попадает.
+func WarnIfPlaintextTokenRef(log *slog.Logger, botID, ref string) {
+	if IsEnvTokenRef(ref) || strings.TrimSpace(ref) == "" {
+		return
+	}
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Warn("token_ref выглядит как plaintext; предпочтительно env:NAME или $NAME",
+		"bot_id", botID,
+		"token_hint", TokenHint(ref),
+	)
 }

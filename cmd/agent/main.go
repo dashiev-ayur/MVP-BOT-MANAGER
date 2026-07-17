@@ -21,6 +21,7 @@ import (
 	"mvp-manager/internal/store"
 	"mvp-manager/internal/storeopen"
 	"mvp-manager/internal/supervisor"
+	"mvp-manager/internal/watch"
 )
 
 // version — строка версии бинарника; позже можно подставлять через -ldflags.
@@ -36,7 +37,8 @@ const helpText = `mvp-manager agent — демон управления бота
 
 ENV: NODE_ID (обяз.), STORE=memory, MEMORY_STORE_PATH (общий JSON с ctl/runner/healthcheck),
 BOT_RUNNER_COMMAND, BOT_RUNNER_WORKDIR (опц.), BOT_RUNNER_HEALTH_PORT (опц.),
-LEASE_TTL (дефолт 15s), RECONCILE_INTERVAL, HEARTBEAT_INTERVAL, SHUTDOWN_GRACE, PUBLIC_URL.
+LEASE_TTL (дефолт 15s), RECONCILE_INTERVAL, HEARTBEAT_INTERVAL, SHUTDOWN_GRACE, PUBLIC_URL,
+RESTART_MAX_ATTEMPTS, RESTART_BACKOFF_BASE, RESTART_BACKOFF_MAX, MAX_BOTS_PER_NODE.
 См. .env.example и README.
 `
 
@@ -75,6 +77,9 @@ func main() {
 		"reconcile_interval", cfg.ReconcileInterval.String(),
 		"heartbeat_interval", cfg.HeartbeatInterval.String(),
 		"shutdown_grace", cfg.ShutdownGrace.String(),
+		"restart_max_attempts", cfg.RestartMaxAttempts,
+		"restart_backoff_base", cfg.RestartBackoffBase.String(),
+		"max_bots_per_node", cfg.MaxBotsPerNode,
 	)
 
 	// Регистрация ноды в store (Upsert по NODE_ID) — агент «появляется» в реестре.
@@ -95,6 +100,9 @@ func main() {
 	}
 	slog.Info("нода зарегистрирована", "node_id", cfg.NodeID, "hostname", hostname)
 
+	watcher := watch.OpenForStore(storeKind, cfg.MemoryStorePath, slog.Default())
+	defer func() { _ = watcher.Close() }()
+
 	sup := supervisor.New(cfg.ShutdownGrace)
 	loop := reconcile.New(cfg.NodeID, st.Nodes, st.Runtimes, st.Bots, sup)
 	loop.ReconcileInterval = cfg.ReconcileInterval
@@ -106,11 +114,18 @@ func main() {
 	loop.StoreKind = storeKind
 	loop.MemoryStorePath = cfg.MemoryStorePath
 	loop.Lease = lease.New(cfg.NodeID, cfg.LeaseTTL, st.Runtimes)
+	loop.Restart = reconcile.RestartPolicy{
+		MaxAttempts: cfg.RestartMaxAttempts,
+		Base:        cfg.RestartBackoffBase,
+		Max:         cfg.RestartBackoffMax,
+	}
+	loop.MaxBotsPerNode = cfg.MaxBotsPerNode
+	loop.Watcher = watcher
 
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	slog.Info("agent запущен: heartbeat + reconcile")
+	slog.Info("agent запущен: heartbeat + reconcile (+ store watcher)")
 	runErr := loop.Run(runCtx)
 	if runErr != nil && runCtx.Err() == nil {
 		fmt.Fprintf(os.Stderr, "agent: reconcile: %v\n", runErr)

@@ -113,7 +113,7 @@ func cmdBots(ctx context.Context, cfg config.Config, st *memory.Store, args []st
 		if len(args) < 2 {
 			return fmt.Errorf("usage: ctl bots start <bot-id>")
 		}
-		return botsStart(ctx, st, args[1])
+		return botsStartWithCfg(ctx, cfg, st, args[1])
 	case "stop":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: ctl bots stop <bot-id>")
@@ -214,6 +214,9 @@ func botsCreateCustom(ctx context.Context, cfg config.Config, st *memory.Store, 
 	}
 
 	nodeID := cfg.NodeID
+	if err := ops.CheckBotLimit(ctx, st.Bots, nodeID, cfg.MaxBotsPerNode, true); err != nil {
+		return err
+	}
 	rtName := "custom-" + customName
 
 	var wd *string
@@ -260,6 +263,7 @@ func botsCreateCustom(ctx context.Context, cfg config.Config, st *memory.Store, 
 	if err != nil {
 		return fmt.Errorf("create bot (runtime %s уже создан): %w", rt.ID, err)
 	}
+	launch.WarnIfPlaintextTokenRef(nil, bot.ID, token)
 
 	fmt.Printf("created bot_id=%s runtime_id=%s port=%d custom_name=%s type=custom\n",
 		bot.ID, rt.ID, bot.Port, customName)
@@ -284,6 +288,9 @@ func botsCreateDefault(ctx context.Context, cfg config.Config, st *memory.Store,
 	}
 
 	nodeID := cfg.NodeID
+	if err := ops.CheckBotLimit(ctx, st.Bots, nodeID, cfg.MaxBotsPerNode, true); err != nil {
+		return err
+	}
 	rt, err := getOrCreateBotRunnerRuntime(ctx, cfg, st, nodeID)
 	if err != nil {
 		return err
@@ -305,6 +312,7 @@ func botsCreateDefault(ctx context.Context, cfg config.Config, st *memory.Store,
 	if err != nil {
 		return fmt.Errorf("create bot: %w", err)
 	}
+	launch.WarnIfPlaintextTokenRef(nil, bot.ID, token)
 
 	fmt.Printf("created bot_id=%s runtime_id=%s port=%d type=%s\n",
 		bot.ID, rt.ID, bot.Port, botType)
@@ -382,8 +390,12 @@ func channelModePort(fs map[string]string) (channel, mode string, port int, err 
 	return channel, mode, port, nil
 }
 
-func botsStart(ctx context.Context, st *memory.Store, botID string) error {
-	if err := ops.Start(ctx, opsRepos(st), botID); err != nil {
+func botsStartWithCfg(ctx context.Context, cfg config.Config, st *memory.Store, botID string) error {
+	return botsStartWithLimit(ctx, st, botID, cfg.MaxBotsPerNode)
+}
+
+func botsStartWithLimit(ctx context.Context, st *memory.Store, botID string, maxBots int) error {
+	if err := ops.StartWithLimit(ctx, opsRepos(st), botID, maxBots); err != nil {
 		return err
 	}
 	bot, _ := st.Bots.ByID(ctx, botID)
@@ -461,7 +473,7 @@ func botsList(ctx context.Context, st *memory.Store) error {
 		return err
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tNAME\tTYPE\tPORT\tDESIRED\tACTUAL\tRUNTIME_ID\tLAST_ERROR")
+	fmt.Fprintln(w, "ID\tNAME\tTYPE\tPORT\tDESIRED\tACTUAL\tRUNTIME_ID\tLAST_ERROR\tTOKEN_REF")
 	for _, b := range bots {
 		rt := ""
 		if b.RuntimeID != nil {
@@ -471,8 +483,9 @@ func botsList(ctx context.Context, st *memory.Store) error {
 		if b.LastError != nil {
 			lastErr = *b.LastError
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
-			b.ID, b.Name, b.BotType, b.Port, b.DesiredState, b.ActualState, rt, lastErr)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\n",
+			b.ID, b.Name, b.BotType, b.Port, b.DesiredState, b.ActualState, rt, lastErr,
+			launch.MaskTokenRef(b.TokenRef))
 	}
 	return w.Flush()
 }

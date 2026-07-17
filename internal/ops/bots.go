@@ -23,13 +23,24 @@ type Repos struct {
 }
 
 // Start выставляет desired=running боту и связанному runtime.
+// maxBots — MAX_BOTS_PER_NODE (0 = без проверки); проверяем assigned ноду бота.
 func Start(ctx context.Context, r Repos, botID string) error {
+	return StartWithLimit(ctx, r, botID, 0)
+}
+
+// StartWithLimit — как Start, но с проверкой MAX_BOTS_PER_NODE.
+func StartWithLimit(ctx context.Context, r Repos, botID string, maxBots int) error {
 	bot, err := r.Bots.ByID(ctx, botID)
 	if err != nil {
 		return err
 	}
 	if bot.RuntimeID == nil {
 		return fmt.Errorf("bot %s: нет runtime_id", botID)
+	}
+	if bot.AssignedNodeID != nil {
+		if err := CheckBotLimit(ctx, r.Bots, *bot.AssignedNodeID, maxBots, false); err != nil {
+			return err
+		}
 	}
 	rtID := *bot.RuntimeID
 
@@ -124,6 +135,8 @@ type MigrateOptions struct {
 	WaitTimeout time.Duration
 	// PollInterval — шаг опроса actual.
 	PollInterval time.Duration
+	// MaxBotsPerNode — лимит на целевой ноде (0 = без лимита).
+	MaxBotsPerNode int
 }
 
 // Migrate: stop → wait actual stopped → reassign assigned_node (+ runtime для default) → start.
@@ -168,7 +181,12 @@ func Migrate(ctx context.Context, r Repos, botID string, opt MigrateOptions) err
 	}
 	to := opt.ToNodeID
 
-	// 3) Reassign.
+	// 3) Reassign — проверка лимита на целевой ноде.
+	// Лимит передаётся через opt.MaxBotsPerNode (0 = выкл.).
+	if err := CheckBotLimit(ctx, r.Bots, to, opt.MaxBotsPerNode, true); err != nil {
+		return fmt.Errorf("migrate limit: %w", err)
+	}
+
 	bot.AssignedNodeID = &to
 	bot.ActualState = store.ActualMigrating
 	bot.DesiredState = store.DesiredStopped // start выставит running ниже
@@ -207,7 +225,7 @@ func Migrate(ctx context.Context, r Repos, botID string, opt MigrateOptions) err
 	}
 
 	// 4) Start на целевой ноде.
-	if err := Start(ctx, r, botID); err != nil {
+	if err := StartWithLimit(ctx, r, botID, opt.MaxBotsPerNode); err != nil {
 		return fmt.Errorf("migrate start on %s: %w", to, err)
 	}
 
@@ -315,5 +333,6 @@ func MigrateOptsFromConfig(cfg config.Config, toNode string) MigrateOptions {
 		BotRunnerWorkdir: cfg.BotRunnerWorkdir,
 		WaitTimeout:      30 * time.Second,
 		PollInterval:     250 * time.Millisecond,
+		MaxBotsPerNode:   cfg.MaxBotsPerNode,
 	}
 }

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"mvp-manager/internal/launch"
 	"mvp-manager/internal/lease"
+	"mvp-manager/internal/metrics"
 	"mvp-manager/internal/store"
 	"mvp-manager/internal/supervisor"
 )
@@ -160,12 +162,7 @@ func (l *Loop) reconcileBotRunner(ctx context.Context, rt store.Runtime, allowUn
 
 	if allowUnhealthyRestart && rt.DesiredState == store.DesiredRunning && running {
 		if unhealthy, botID := l.findUnhealthyDefault(ctx, rt.ID); unhealthy {
-			l.log.Info("unhealthy bot → restart bot_runner",
-				"runtime_id", rt.ID, "bot_id", botID)
-			if err := l.restartBotRunner(ctx, rt); err != nil {
-				return err
-			}
-			return nil
+			return l.maybeRestartBotRunner(ctx, rt, "unhealthy:"+botID)
 		}
 	}
 
@@ -173,10 +170,39 @@ func (l *Loop) reconcileBotRunner(ctx context.Context, rt store.Runtime, allowUn
 	case store.DesiredRunning:
 		return l.ensureBotRunnerRunning(ctx, rt, snap, tracked, running)
 	case store.DesiredStopped:
+		l.restarts.clear(rt.ID)
 		return l.ensureBotRunnerStopped(ctx, rt, snap, tracked, running)
 	default:
 		return fmt.Errorf("bot_runner: unknown desired_state %q", rt.DesiredState)
 	}
+}
+
+// maybeRestartBotRunner — unhealthy/crash с тем же backoff, что custom.
+func (l *Loop) maybeRestartBotRunner(ctx context.Context, rt store.Runtime, reason string) error {
+	now := time.Now()
+	allow, wait, attempt := l.restarts.recordFailure(rt.ID, l.Restart, now)
+	if !allow {
+		if wait > 0 {
+			l.log.Info("bot_runner restart backoff",
+				"runtime_id", rt.ID, "reason", reason,
+				"attempt", attempt, "wait", wait.String())
+			return nil
+		}
+		if l.Restart.MaxAttempts <= 0 {
+			return nil
+		}
+		msg := fmt.Sprintf("bot_runner restart exhausted after %d attempts (%s)", attempt, reason)
+		_ = l.Runtimes.UpdateActual(ctx, rt.ID, store.RuntimeActualPatch{
+			ActualState: store.ActualFailed,
+			LastError:   &msg,
+		})
+		l.log.Warn("bot_runner restart exhausted", "runtime_id", rt.ID, "attempts", attempt)
+		return nil
+	}
+	l.metrics().Inc(metrics.Restarts, "runtime_id", rt.ID, "reason", reason, "attempt", attempt)
+	l.log.Info("bot_runner restart",
+		"runtime_id", rt.ID, "reason", reason, "attempt", attempt)
+	return l.restartBotRunner(ctx, rt)
 }
 
 func (l *Loop) findUnhealthyDefault(ctx context.Context, runtimeID string) (bool, string) {
@@ -280,13 +306,16 @@ func (l *Loop) ensureBotRunnerRunning(ctx context.Context, rt store.Runtime, sna
 			LastError:   &errMsg,
 		})
 		l.Supervisor.Forget(rt.ID)
-		// Авто-рестарт runner при падении процесса (в отличие от custom Phase 1).
-		l.log.Info("bot_runner crashed → restart", "runtime_id", rt.ID)
-		rt.ActualState = store.ActualUnknown
-		return l.startBotRunnerProcess(ctx, rt)
+		return l.maybeRestartBotRunner(ctx, rt, "crash")
+	}
+
+	// Failed без локального процесса — ждём backoff.
+	if rt.ActualState == store.ActualFailed && !running {
+		return l.maybeRestartBotRunner(ctx, rt, "failed")
 	}
 
 	if running {
+		l.restarts.resetAfterSuccess(rt.ID)
 		pid := snap.PID
 		if rt.ActualState != store.ActualRunning || rt.PID == nil || *rt.PID != pid {
 			if err := l.Runtimes.UpdateActual(ctx, rt.ID, store.RuntimeActualPatch{
@@ -369,6 +398,8 @@ func (l *Loop) startBotRunnerProcess(ctx context.Context, rt store.Runtime) erro
 	}); err != nil {
 		return err
 	}
+	l.metrics().Inc(metrics.Starts, "runtime_id", rt.ID, "kind", "bot_runner")
+	l.restarts.resetAfterSuccess(rt.ID)
 	l.log.Info("bot_runner started", "runtime_id", rt.ID, "pid", pid)
 	return nil
 }
@@ -391,6 +422,7 @@ func (l *Loop) ensureBotRunnerStopped(ctx context.Context, rt store.Runtime, sna
 			})
 			return err
 		}
+		l.metrics().Inc(metrics.Stops, "runtime_id", rt.ID, "kind", "bot_runner")
 	}
 
 	var exitCode *int

@@ -35,8 +35,14 @@ const (
 	EnvLeaseTTL = "LEASE_TTL"
 
 	// control-api (Phase 3).
-	EnvAPIAddr          = "API_ADDR"
-	EnvControlAPIToken  = "CONTROL_API_TOKEN"
+	EnvAPIAddr         = "API_ADDR"
+	EnvControlAPIToken = "CONTROL_API_TOKEN"
+
+	// Phase 4: restart policy / лимиты.
+	EnvRestartMaxAttempts = "RESTART_MAX_ATTEMPTS"
+	EnvRestartBackoffBase = "RESTART_BACKOFF_BASE"
+	EnvRestartBackoffMax  = "RESTART_BACKOFF_MAX"
+	EnvMaxBotsPerNode     = "MAX_BOTS_PER_NODE"
 )
 
 // Допустимые значения STORE и значение по умолчанию.
@@ -59,6 +65,13 @@ const (
 
 	DefaultLeaseTTL = 15 * time.Second
 	DefaultAPIAddr  = "127.0.0.1:8080"
+
+	// Restart / limits (Phase 4).
+	DefaultRestartMaxAttempts = 5
+	DefaultRestartBackoffBase = 1 * time.Second
+	DefaultRestartBackoffMax  = 60 * time.Second
+	// DefaultMaxBotsPerNode=0 — без лимита (не ломает e2e Phase 1–3).
+	DefaultMaxBotsPerNode = 0
 )
 
 // Config — снимок конфигурации процесса после чтения ENV.
@@ -115,6 +128,16 @@ type Config struct {
 	APIAddr string
 	// ControlAPIToken — Bearer-токен для HTTP API; пустой → API отклоняет все запросы (401).
 	ControlAPIToken string
+
+	// RestartMaxAttempts — сколько раз рестартовать failed/crashed runtime
+	// (custom и bot_runner). 0 = без авто-рестарта (только ctl start).
+	RestartMaxAttempts int
+	// RestartBackoffBase — начальная пауза перед первым рестартом (экспонента).
+	RestartBackoffBase time.Duration
+	// RestartBackoffMax — потолок backoff.
+	RestartBackoffMax time.Duration
+	// MaxBotsPerNode — лимит ботов на ноду (assigned_node_id); 0 = без лимита.
+	MaxBotsPerNode int
 }
 
 // Load читает конфигурацию из переменных окружения процесса.
@@ -196,6 +219,29 @@ func Load() (Config, error) {
 		apiAddr = DefaultAPIAddr
 	}
 
+	restartMax, err := intFromEnvNonNeg(EnvRestartMaxAttempts, DefaultRestartMaxAttempts)
+	if err != nil {
+		return Config{}, err
+	}
+	backoffBase, err := durationFromEnv(EnvRestartBackoffBase, DefaultRestartBackoffBase)
+	if err != nil {
+		return Config{}, err
+	}
+	backoffMax, err := durationFromEnv(EnvRestartBackoffMax, DefaultRestartBackoffMax)
+	if err != nil {
+		return Config{}, err
+	}
+	if backoffMax < backoffBase {
+		return Config{}, fmt.Errorf(
+			"%s (%s) must be >= %s (%s)",
+			EnvRestartBackoffMax, backoffMax, EnvRestartBackoffBase, backoffBase,
+		)
+	}
+	maxBots, err := intFromEnvNonNeg(EnvMaxBotsPerNode, DefaultMaxBotsPerNode)
+	if err != nil {
+		return Config{}, err
+	}
+
 	cfg := Config{
 		NodeID:              nodeID,
 		Store:               store,
@@ -216,6 +262,10 @@ func Load() (Config, error) {
 		LeaseTTL:            leaseTTL,
 		APIAddr:             apiAddr,
 		ControlAPIToken:     strings.TrimSpace(os.Getenv(EnvControlAPIToken)),
+		RestartMaxAttempts:  restartMax,
+		RestartBackoffBase:  backoffBase,
+		RestartBackoffMax:   backoffMax,
+		MaxBotsPerNode:      maxBots,
 	}
 	return cfg, nil
 }
@@ -232,6 +282,23 @@ func intFromEnv(key string, def int) (int, error) {
 	}
 	if n <= 0 {
 		return 0, fmt.Errorf("%s=%q: must be > 0", key, raw)
+	}
+	return n, nil
+}
+
+// intFromEnvNonNeg читает целое >= 0; пустая строка → def.
+// Нужен для RESTART_MAX_ATTEMPTS=0 (выкл.) и MAX_BOTS_PER_NODE=0 (без лимита).
+func intFromEnvNonNeg(key string, def int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s=%q: %w", key, raw, err)
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("%s=%q: must be >= 0", key, raw)
 	}
 	return n, nil
 }

@@ -21,4 +21,7 @@ var (
 	// ErrLeaseHeld — runtime уже под валидным lease другого владельца
 	// (TryAcquireLease / RenewLease / ReleaseLease).
 	ErrLeaseHeld = errors.New("store: lease held by another owner")
+
+	// ErrLimitExceeded — превышен лимит (например MAX_BOTS_PER_NODE).
+	ErrLimitExceeded = errors.New("store: limit exceeded")
 )

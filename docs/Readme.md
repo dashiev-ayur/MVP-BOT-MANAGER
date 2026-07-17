@@ -20,30 +20,25 @@
 
 | Этап | Реализация | Персистентность |
 |---|---|---|
-| Сейчас (Phase 0–3) | **In-memory** (`STORE=memory` + файл) | Пока живы процессы; общий JSON |
+| Сейчас (Phase 0–4) | **In-memory** (`STORE=memory` + файл) | Пока живы процессы; общий JSON |
 | Позже (Phase PG) | **PostgreSQL** (`STORE=postgres`) | На диске / общий сервер |
 
 Переключение — конфигом, без переписывания бизнес-логики.
 
-### Сейчас (in-memory, Phase 3)
+### Сейчас (in-memory, Phase 4)
 
 Отдельный Postgres **не нужен**. `STORE=memory` по умолчанию.
 
-Общий JSON (`MEMORY_STORE_PATH`) обязателен для **agent**, **ctl**, **bot-runner**, **healthcheck** и **control-api**. Для migrate E2E — два агента с разными `NODE_ID` и одним файлом store.
-
-**После Phase 3:** сценарии `default` / `default_extended` (registry); lease на runtime; `ctl bots migrate` / API migrate; HTTP `control-api` (Bearer); handoff single-bot — [`docs/handoff/`](./handoff/). Образец ENV — [`.env.example`](../.env.example). Команды — корневой [`README.md`](../README.md).
+**После Phase 4:** restart/backoff, `MAX_BOTS_PER_NODE`, метрики (`GET /metrics`), маскирование токенов, file-watch wake reconcile, `doctor` / `drain-node` / `cmd/handoff`. LISTEN/NOTIFY и multi-runner sharding — не в этом наборе (PG / позже). Образец ENV — [`.env.example`](../.env.example). Команды — корневой [`README.md`](../README.md).
 
 ```bash
 go build ./cmd/...
 export NODE_ID=node-1 STORE=memory MEMORY_STORE_PATH=.mvp-manager/store.json
 export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
-export CONTROL_API_TOKEN=dev-secret
-./scripts/e2e-phase3.sh
-./scripts/e2e-phase1.sh && ./scripts/e2e-phase2.sh
-# control-api:
-# API_ADDR=127.0.0.1:8080 ./bin/control-api
-# curl -s -H "Authorization: Bearer $CONTROL_API_TOKEN" http://127.0.0.1:8080/v1/bots
-go test ./internal/lease/... ./internal/api/... ./internal/ops/...
+./scripts/e2e-phase4.sh
+./scripts/e2e-phase1.sh && ./scripts/e2e-phase2.sh && ./scripts/e2e-phase3.sh
+go run ./cmd/doctor
+go run ./cmd/handoff --out /tmp/handoff-demo --name demo --port 18080
 ```
 
 `STORE=postgres` пока отклоняется с понятной ошибкой (Phase PG), без dial БД.
@@ -86,11 +81,11 @@ Go-модуль: **`mvp-manager`**. `bot-runner` — в этом же репоз
 ```
 
 ```text
-/manager Phase 3 целиком (lease, migrate, control-api)
+/manager Phase 4 целиком (hardening)
 ```
 
 ```text
-/manager Пользователь принял Phase 3 — отметь «Принято вами»
+/manager Пользователь принял Phase 4 — отметь «Принято вами»
 ```
 
 ```text

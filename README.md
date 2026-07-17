@@ -14,6 +14,9 @@ go build -o bin/ctl ./cmd/ctl
 go build -o bin/bot-runner ./cmd/bot-runner
 go build -o bin/healthcheck ./cmd/healthcheck
 go build -o bin/control-api ./cmd/control-api
+go build -o bin/doctor ./cmd/doctor
+go build -o bin/drain-node ./cmd/drain-node
+go build -o bin/handoff ./cmd/handoff
 go build -o bin/fake-bot ./examples/fake-bot
 ```
 
@@ -46,6 +49,10 @@ go build ./cmd/...
 | `HEALTHCHECK_ALL_NODES` | нет | false | Опрашивать все ноды, не только `NODE_ID` |
 | `API_ADDR` | нет | `127.0.0.1:8080` | Bind `control-api` |
 | `CONTROL_API_TOKEN` | для API | — | Bearer-токен; без него `/v1/*` → 401 |
+| `RESTART_MAX_ATTEMPTS` | нет | `5` | Авто-рестарты после crash/unhealthy; `0` = выкл. |
+| `RESTART_BACKOFF_BASE` | нет | `1s` | Начальная пауза экспоненциального backoff |
+| `RESTART_BACKOFF_MAX` | нет | `60s` | Потолок backoff |
+| `MAX_BOTS_PER_NODE` | нет | `0` | Лимит ботов на ноду; `0` = без лимита |
 | `PUBLIC_URL` | нет | — | Опционально в launch ENV custom-бота |
 | `DATABASE_URL` | нет | — | DSN Postgres (Phase PG) |
 
@@ -63,15 +70,26 @@ export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
 
 | Бинарник | Роль |
 |---|---|
-| `agent` | Heartbeat + reconcile + lease: custom_bot и bot_runner через supervisor |
+| `agent` | Heartbeat + reconcile + lease + restart/backoff; file-watch wake (memory) |
 | `bot-runner` | Multi-tenant: N default* в **одном** OS-процессе; сценарии `default` / `default_extended` (registry) |
 | `healthcheck` | Опрос `GET /healthz` у webhook; пишет unhealthy в store; **не** рестартует процессы |
-| `ctl` | CRUD desired-состояния; `bots migrate --to-node` |
-| `control-api` | HTTP API (ТЗ §11) над тем же store |
+| `ctl` | CRUD desired-состояния; `bots migrate --to-node`; лимит `MAX_BOTS_PER_NODE` |
+| `control-api` | HTTP API (ТЗ §11) над тем же store; `GET /metrics` |
+| `doctor` | Сверка портов / PID / lease / listen (отчёт в stdout) |
+| `drain-node` | `status=draining` + stop ботов или migrate на `--to-node` |
+| `handoff` | Упаковка `docs/handoff` → каталог выдачи клиенту |
 
 **Lease:** старт OS-процесса только после успешного `Acquire` текущим `NODE_ID`; `Renew` в цикле reconcile; чужой lease → не Start / Stop локального процесса.
 
-**Policy восстановления unhealthy:** healthcheck ставит `actual_state=failed` и `last_error` с префиксом `healthcheck:`; agent при следующем reconcile делает Stop+Start всего `bot_runner`. Runner заново поднимает инстансы со «здоровым» `/healthz`.
+**Store wake (Phase 4):** периодический poll остаётся safety net; при `STORE=memory` + `MEMORY_STORE_PATH` agent следит за mtime файла (`internal/watch.ChangeWatcher`) и будит reconcile раньше интервала. Для `STORE=postgres` точка расширения — `LISTEN/NOTIFY` (Phase PG), сейчас nop.
+
+**Restart policy:** после crash custom / bot_runner (и unhealthy runner) — экспоненциальный backoff (`RESTART_*`); сброс после успешного `running`.
+
+**Лимит ботов:** `MAX_BOTS_PER_NODE` — create/start (ctl и control-api) отклоняют превышение; reconcile не стартует сверх лимита.
+
+**Метрики:** slog с attr `metric=…` и `GET /metrics` на control-api (простой text).
+
+**Policy восстановления unhealthy:** healthcheck ставит `actual_state=failed` и `last_error` с префиксом `healthcheck:`; agent при следующем reconcile (после backoff) делает Stop+Start всего `bot_runner`.
 
 ### token_ref
 
@@ -83,7 +101,11 @@ export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
 | `env:NAME` | `os.Getenv("NAME")` |
 | `$NAME` | то же |
 
-Полный токен в slog не пишется (только `TokenHint`: длина / хвост).
+Полный токен в slog не пишется (`TokenHint`: только длина). В `ctl bots list` и HTTP API `token_ref` маскируется (`MaskTokenRef`); plaintext → warn в лог. Предпочтительно `env:NAME`.
+
+### Multi-runner sharding
+
+Несколько runner’ов на ноду / шардирование — **вне** текущего Phase 4 (TODO на будущее). Сейчас один `bot_runner` на `NODE_ID`.
 
 ### Мессенджеры
 
@@ -143,13 +165,26 @@ curl -s http://127.0.0.1:8080/healthz
 curl -s -H "Authorization: Bearer secret" http://127.0.0.1:8080/v1/bots
 ```
 
+## Phase 4: hardening
+
+```bash
+# лимит / doctor / drain / handoff / backoff — см. скрипт
+./scripts/e2e-phase4.sh
+
+go run ./cmd/doctor
+go run ./cmd/drain-node --node node-1
+go run ./cmd/drain-node --node node-1 --to-node node-2
+go run ./cmd/handoff --out /tmp/out --name demo --port 18080
+```
+
 ## E2E-скрипты
 
 ```bash
-chmod +x scripts/e2e-phase1.sh scripts/e2e-phase2.sh scripts/e2e-phase3.sh
+chmod +x scripts/e2e-phase1.sh scripts/e2e-phase2.sh scripts/e2e-phase3.sh scripts/e2e-phase4.sh
 ./scripts/e2e-phase1.sh
 ./scripts/e2e-phase2.sh
 ./scripts/e2e-phase3.sh
+./scripts/e2e-phase4.sh
 ```
 
 ## Тесты

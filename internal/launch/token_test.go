@@ -2,6 +2,7 @@ package launch_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"mvp-manager/internal/launch"
@@ -70,6 +71,23 @@ func TestTokenHint_NoFullSecret(t *testing.T) {
 	}
 	if hint == "" {
 		t.Fatal("empty hint")
+	}
+	if strings.Contains(hint, "ABC") || strings.Contains(hint, "DEF") {
+		t.Fatalf("hint must not contain token fragments: %q", hint)
+	}
+}
+
+func TestMaskTokenRef(t *testing.T) {
+	t.Parallel()
+	if got := launch.MaskTokenRef("env:TELEGRAM_BOT_TOKEN"); got != "env:TELEGRAM_BOT_TOKEN" {
+		t.Fatalf("env ref: %q", got)
+	}
+	masked := launch.MaskTokenRef("123456:ABC-DEFGHIJ")
+	if masked == "123456:ABC-DEFGHIJ" {
+		t.Fatal("plaintext must be masked")
+	}
+	if !strings.Contains(masked, "*") {
+		t.Fatalf("expected stars in %q", masked)
 	}
 }
 
