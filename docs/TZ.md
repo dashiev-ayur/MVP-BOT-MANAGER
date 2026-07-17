@@ -1,7 +1,7 @@
 # Техническое задание: MVP Bot Runtime Manager
 
 **Версия:** 0.3  
-**Стек:** Go, PostgreSQL  
+**Стек:** Go; хранилище: in-memory → PostgreSQL  
 **Статус:** MVP (1 сервер → расширение до 2–3)
 
 ---
@@ -10,7 +10,7 @@
 
 Построить систему, которая:
 
-- хранит реестр клиентских ботов (Telegram, Max) в **одной общей PostgreSQL**;
+- хранит реестр клиентских ботов (Telegram, Max) в **хранилище за интерфейсом** (сначала in-memory, затем PostgreSQL);
 - для **дефолтных сценариев** запускает ботов в **multi-tenant** режиме (один OS-процесс — много ботов);
 - для **custom** ботов запускает **отдельный OS-процесс** на бота (артефакт из отдельного репозитория, стандартизированная команда);
 - на каждом сервере держит агент, который сводит фактическое состояние к желаемому (reconcile);
@@ -32,11 +32,16 @@
 | `default`, `default-extended`, другие вшитые | **Multi-tenant Bot Runner** — один (или несколько) OS-процессов на ноду, внутри N ботов | Экономия RAM/CPU |
 | `custom` | **Dedicated process** — 1 бот = 1 OS-процесс | Изоляция, свой стек (Go/Node), выдача исходников |
 
-Менеджер управляет **OS-процессами рантайма** (`bot-runner`, custom-бинарники), а не каждым сообщением бота.
+Менеджер управляет **OS-процессами рантайма** (`bot-runner`, custom-бинарники), а не каждым сообщением бота.  
+Состояние desired/actual — в **Store** (порт хранилища). Реализации: `memory`, позже `postgres`. Бизнес-логика от SQL/драйвера **не зависит** (DIP).
 
 ```
-PostgreSQL (bots + runtimes + nodes)
+Store (интерфейс)
+  ├─ memory     ← текущий этап
+  └─ postgres   ← Phase PG
         ↑↓
+   Agent / ctl / runner (через интерфейсы)
+        │
    ┌────┴────┬─────────────┬──────────────┐
    │         │             │              │
  Agent   healthcheck   control-api       ctl
@@ -45,7 +50,7 @@ PostgreSQL (bots + runtimes + nodes)
    └─ Supervisor → custom bot processes (1:1)
 ```
 
-Управление start/stop/add — через изменения в БД (`desired_state` и т.д.). API и CLI только удобные обёртки над теми же полями.
+Управление start/stop/add — через изменения в **Store** (`desired_state` и т.д.). API и CLI — обёртки над теми же полями.
 
 ---
 
@@ -62,7 +67,7 @@ PostgreSQL (bots + runtimes + nodes)
 | Reconcile | desired ↔ actual для runtimes и состава ботов в runner |
 | Lease / assigned_node | Защита от двойного запуска |
 | Migrate | Перенос runner или custom-бота между нодами |
-| Управление через БД | INSERT/UPDATE `bots` → агент/runner согласовывают состояние |
+| Управление через Store | create/update ботов → агент/runner согласовывают состояние |
 | HTTP API | Отдельный `control-api` (CRUD, start/stop, migrate) |
 | CLI `ctl` | Операции из терминала без ручного SQL |
 | Healthcheck | Отдельный `cmd/healthcheck` для `/healthz` webhook-ботов |
@@ -102,7 +107,7 @@ PostgreSQL (bots + runtimes + nodes)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                     PostgreSQL                               │
+│                     Store (memory → postgres)                 │
 │         nodes | bots | runtimes | bot_events                 │
 └─▲─────────▲──────────▲──────────▲────────────────────────────┘
   │         │          │          │
@@ -204,7 +209,10 @@ PostgreSQL (bots + runtimes + nodes)
 
 ---
 
-## 6. Модель данных (PostgreSQL)
+## 6. Модель данных (логическая + PostgreSQL)
+
+Логическая модель едина для **memory** и **postgres**.  
+Ниже — целевая схема PostgreSQL (Phase PG). In-memory реализует те же сущности и инварианты в структурах Go.
 
 ### 6.1. `nodes`
 
@@ -478,7 +486,7 @@ bot_runner_workdir: /var/lib/mvp-manager/runner
 
 ## 11. HTTP API (`cmd/control-api`)
 
-Канонический путь управления — строки в PostgreSQL. `control-api` и `ctl` только меняют те же поля.
+Канонический путь управления — записи в **Store**. `control-api` и `ctl` только меняют те же поля.
 
 | Method | Path | Описание |
 |---|---|---|
@@ -532,7 +540,8 @@ bot-runner/              # отдельно или monorepo
 bots-custom/<custom_name>/   # отдельные репо; агент только запускает артефакт
 ```
 
-Зависимости: `pgx/v5`, goose/migrate, `log/slog`; HTTP-router — в `control-api`, не в `agent`.
+Зависимости ранних фаз: `log/slog`; HTTP-router — в `control-api`.  
+`pgx/v5`, goose — только в Phase PG (`internal/store/postgres`, `cmd/migrate`).
 
 ---
 
@@ -540,16 +549,16 @@ bots-custom/<custom_name>/   # отдельные репо; агент толь�
 
 ### Phase 0 — каркас
 
-- [ ] Go-модуль, каркас `cmd/agent`, `cmd/ctl`, `cmd/migrate`  
-- [ ] Миграции `nodes`, `runtimes`, `bots`, `bot_events`  
-- [ ] docker-compose с PostgreSQL  
-- [ ] конфиг / подключение к БД  
+- [ ] Go-модуль `mvp-manager`, каркас `cmd/agent`, `cmd/ctl`  
+- [ ] `internal/store` (интерфейсы) + `internal/store/memory`  
+- [ ] конфиг `STORE=memory`  
+- [ ] бизнес-логика без зависимости от pgx/SQL  
 
 ### Phase 1 — custom dedicated + supervisor
 
 - [ ] Supervisor start/stop в `agent`  
 - [ ] Reconcile для `kind=custom_bot`  
-- [ ] Управление через БД + `ctl` (start/stop/create)  
+- [ ] Управление через Store + `ctl` (start/stop/create)  
 - [ ] Уникальность port  
 - [ ] Минимальный `control-api` (или только `ctl` на первом шаге)  
 
@@ -561,6 +570,12 @@ bots-custom/<custom_name>/   # отдельные репо; агент толь�
 - [ ] Агент поднимает один runner на ноду  
 - [ ] `cmd/healthcheck`: опрос `/healthz`, запись в БД, без рестартов  
 - [ ] Агент реагирует на unhealthy/failed  
+
+### Phase PG — PostgreSQL
+
+- [ ] goose + схема ТЗ §6  
+- [ ] `internal/store/postgres`  
+- [ ] `STORE=postgres` без изменения reconcile/supervisor  
 
 ### Phase 3 — типы и migrate
 
@@ -618,8 +633,8 @@ bots-custom/<custom_name>/   # отдельные репо; агент толь�
 3. Polling-бот работает без bind порта, порт зарезервирован в БД.  
 4. `custom` бот стартует отдельным процессом по `start_command` + ENV.  
 5. `custom_name` обязателен только для `custom`.  
-6. Start/stop через БД (`ctl`/API) отражается в actual state.  
-7. `healthcheck` детектит падение `/healthz` и пишет в БД; рестарт выполняет `agent`.  
+6. Start/stop через Store (`ctl`/API) отражается в actual state.  
+7. `healthcheck` детектит падение `/healthz` и пишет в Store; рестарт выполняет `agent`.  
 8. Бинарники разделены: как минимум `agent`, `bot-runner`, `healthcheck`, `ctl`.  
 9. Задокументирован handoff: исходники + `.env.example`.  
 10. Закладываются `assigned_node_id` и migrate без двойного запуска.
@@ -684,28 +699,30 @@ POST /v1/bots/{id}/migrate
 | Вопрос | Решение |
 |---|---|
 | Язык менеджера | Go |
-| БД | Одна PostgreSQL |
+| БД / Store | Сначала **in-memory**; PostgreSQL — Phase PG (одна общая БД на ноды) |
+| Изоляция от БД | Бизнес-логика зависит только от интерфейсов `store` (DIP) |
 | Default-сценарии | **Multi-tenant bot-runner** |
 | Custom | Отдельный OS-процесс, отдельные репо |
-| Порт | UNIQUE в БД на каждого бота |
+| Порт | UNIQUE в Store на каждого бота |
 | Поля бота | port, bot_type, custom_name (для custom) |
 | Режимы | webhook + long polling |
-| Управление | Изменения в БД; `ctl` / `control-api` — обёртки |
+| Управление | Изменения в Store; `ctl` / `control-api` — обёртки |
 | `/healthz` ботов | Отдельный `cmd/healthcheck`; рестарт только в `agent` |
 | HTTP API | `cmd/control-api` (не смешивать с ядром агента) |
 | CLI | `cmd/ctl` |
 | Handoff | Исходники Go/Node + launch contract; утилита `cmd/handoff` позже |
 | Go-модуль | `mvp-manager` |
 | `bot-runner` | Monorepo: `cmd/bot-runner` + `internal/runner` |
-| Объём MVP | Весь проект по плану (Phase 0–4); сдача поэтапная с ручной приёмкой |
+| Объём MVP | Весь проект по плану (Phase 0–4 + PG); сдача поэтапная |
 | Масштаб | MVP: 1 нода; дизайн на 2–3 |
 | Авто-failover | Нет в MVP |
-| Запуск БД | Инструкции пользователя позже |
+| Запуск Postgres | Инструкции пользователя позже |
 
 ---
 
 ## 19. Дальнейшие шаги
 
 1. Пользователь выдаёт задания manager по одному этапу.  
-2. До инструкций по БД — не фиксировать prod-деплой Postgres; локальный compose — по заданию Phase 0.2, если пользователь не укажет иное.  
-3. Phase 0 → … → Phase 4 с ручной приёмкой каждого этапа.
+2. Phase 0–2 на **memory** store.  
+3. Phase PG — когда будут инструкции по БД.  
+4. Phase 3–4 с ручной приёмкой.

@@ -55,9 +55,11 @@ type BotRepository interface {
 
 ## DIP — завись от абстракций на границах
 
-- Домен/`reconcile` зависят от интерфейсов; `pgx`-реализация — в `internal/db`.
-- Не протаскивай `*pgxpool.Pool` глубоко в бизнес-логику.
-- Конструкторы принимают зависимости явно: `NewLoop(repo BotRepository, sup Starter)`.
+- Домен/`reconcile`/runner зависят от интерфейсов `internal/store`, **не** от конкретной БД.
+- Сначала реализация **`memory`**; PostgreSQL — отдельный пакет `internal/store/postgres` (Phase PG).
+- Не протаскивай `*pgxpool.Pool`, SQL или драйвер в бизнес-логику.
+- Конструкторы принимают зависимости явно: `NewLoop(repo store.BotRepository, sup Starter)`.
+- Выбор реализации — только в `main`/wiring по `STORE=memory|postgres`.
 
 ## DRY — без копипасты и без «магических» утилит
 
