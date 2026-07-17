@@ -132,6 +132,11 @@ export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
 
 Вне текущего MVP. Сейчас один `bot_runner` на `NODE_ID`.
 
+### TODO: unhealthy → reload одного инстанса
+
+Сейчас: healthcheck помечает webhook unhealthy → agent делает Stop+Start **всего** `bot_runner` (все default в процессе кратко гаснут).  
+Желательно: перезапускать **только** проблемный инстанс внутри runner; полный рестарт runtime — при краше PID или эскалации. См. backlog в [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md).
+
 ## E2E
 
 ```bash

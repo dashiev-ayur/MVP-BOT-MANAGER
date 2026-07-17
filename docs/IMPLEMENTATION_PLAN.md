@@ -371,6 +371,7 @@ export STORE=postgres
 - [x] Улучшение хранения секретов токенов
 - [x] Опционально: `doctor`, `drain-node` *(включены в согласованный набор)*
 - [ ] Опционально: шардирование нескольких runner’ов *(вне согласованного набора; TODO в README)*
+- [ ] **TODO:** unhealthy webhook → reload **одного** инстанса в runner, а не Stop+Start всего `bot_runner` *(сейчас agent рестартит весь runtime — лишний blast radius; отдельным заданием)*
 - [x] `cmd/handoff` (отложено из Phase 3.5)
 
 ### Закрытие Phase 4
@@ -380,7 +381,14 @@ export STORE=postgres
 
 ---
 
-## Зафиксированные решения (старт)
+## Backlog (после принятых фаз)
+
+Задачи вне закрытого MVP; брать отдельным `/manager`, не смешивать с уже принятыми фазами.
+
+| TODO | Суть | Зачем |
+|---|---|---|
+| Unhealthy → reload инстанса | Healthcheck помечает одного webhook → runner перезапускает **только** этот бот (remove/add или bump `config_version`); Stop+Start всего `bot_runner` оставить для краша PID / массовых фейлов | Не гасить соседние default при одном unhealthy |
+| Multi-runner sharding | Несколько `bot_runner` на ноде, раздача ботов по `runtime_id` | Меньший blast radius и нагрузка при многих default |
 
 | Вопрос | Решение | Дата |
 |---|---|---|
