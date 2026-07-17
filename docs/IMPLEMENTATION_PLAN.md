@@ -222,28 +222,81 @@
 
 **Зачем:** персистентность и общая БД на несколько нод. Бизнес-логика **не меняется** — только новая реализация `internal/store`.
 
-**Статус фазы:** ⏳ не начата  
-**Старт:** по вашему заданию (можно после Phase 2 или раньше — когда дадите инструкции по БД).  
-**Не начинать**, пока вы не дали инструкции по запуску Postgres (или явно не попросили локальный compose).
+**Статус фазы:** ⏳ не начата (требования зафиксированы 2026-07-17; старт — по вашему `/manager`)  
+**Старт:** когда вы явно попросите выполнить Phase PG (после перечитывания этого раздела).
+
+### Решения (зафиксировано)
+
+| Вопрос | Решение | Дата |
+|---|---|---|
+| Запуск Postgres | Docker: **`docker compose up -d`** (одна команда поднимает контейнер) | 2026-07-17 |
+| Параметры подключения | В `.env` / `.env.example`: `STORE=postgres`, `DATABASE_URL` (и при необходимости host/port/user/password как часть DSN) | 2026-07-17 |
+| E2E и рабочая БД | **Разные базы** в том же Docker Postgres (не отдельная schema): например `mvp_manager` (dev) и `mvp_manager_e2e` (тесты). DSN: `DATABASE_URL` vs `DATABASE_URL_E2E` | 2026-07-17 |
+| Миграции | Отдельная команда: `cmd/migrate` (goose) — **не** смешивать с compose up | 2026-07-17 |
+| Сиды | Отдельная **ручная** команда (не при первом `compose up`) | 2026-07-17 |
+| Таблица `clients` | **Нет** — только `bots.client_id` (UUID) | 2026-07-17 |
+| Состав сидов | 2 клиента (2 UUID): у 1-го — **2** бота, у 2-го — **1** бот; все `bot_type=default` | 2026-07-17 |
+| Цель сидов | Посмотреть работу default/runner на Postgres на текущем этапе | 2026-07-17 |
+
+**Порядок локального старта (после реализации фазы):**
+
+```bash
+# 1) БД
+docker compose up -d
+
+# 2) схема
+go run ./cmd/migrate up
+# или: ./bin/migrate up
+
+# 3) сиды (вручную, отдельной командой — имя уточнится при реализации, напр. migrate seed / cmd/seed)
+go run ./cmd/migrate seed   # ориентир; финальная команда — в README после реализации
+
+# 4) приложение
+export STORE=postgres
+# DATABASE_URL из .env  → база mvp_manager (dev/ручная работа)
+./bin/agent
+
+# E2E (тот же контейнер, другая БД):
+# DATABASE_URL_E2E=.../mvp_manager_e2e
+# migrate up / тесты только против DATABASE_URL_E2E — не трогают dev-данные
+```
 
 ### PG.1. Инфраструктура
 
-- [ ] `docker-compose.yml` **или** подключение по вашим инструкциям
-- [ ] `.env.example`: `STORE=postgres`, `DATABASE_URL`
-- [ ] `cmd/migrate` + goose
-- [ ] SQL-схема по ТЗ §6 (`nodes`, `runtimes`, `bots`, `bot_events`, …)
+- [ ] `docker-compose.yml` — сервис PostgreSQL; подъём: `docker compose up -d`
+- [ ] При инициализации тома (или init-скрипт) создать **две** базы: рабочую (`mvp_manager`) и e2e (`mvp_manager_e2e`) — либо документированный способ `CREATE DATABASE` один раз
+- [ ] `.env.example`: `STORE=postgres`, `DATABASE_URL=…` (dev), `DATABASE_URL_E2E=…` (e2e; другое имя БД, тот же хост/порт)
+- [ ] `cmd/migrate` + goose — применение SQL-миграций отдельной командой; для e2e — migrate на `DATABASE_URL_E2E`
+- [ ] SQL-схема по ТЗ §6 (`nodes`, `runtimes`, `bots`, `bot_events`, …); **без** таблицы `clients`
+- [ ] Команда сидов (отдельно от migrate up и от compose): идемпотентно или с защитой от повторного загрязнения — на усмотрение реализации, но запуск **только вручную**; сиды по умолчанию в **dev**-БД (`DATABASE_URL`), не в e2e (если не указано иное)
 
 ### PG.2. Адаптер
 
-- [ ] `internal/store/postgres` реализует те же интерфейсы, что memory
+- [ ] `internal/store/postgres` реализует те же интерфейсы, что memory (включая lease CAS, events)
 - [ ] Wiring: `STORE=postgres` → postgres store
 - [ ] Бизнес-пакеты по-прежнему **без** импорта pgx
+- [ ] Опционально в рамках PG: реализация `LISTEN/NOTIFY` для `ChangeWatcher` (задел Phase 4) — желательно, не блокирует закрытие, если poll достаточен
 
-**Проверка:** те же сценарии Phase 1–2 работают на Postgres; переключение memory ↔ postgres только конфигом
+### PG.3. Сиды (ручные)
+
+- [ ] Два стабильных UUID клиента (зафиксировать в SQL/коде сида, задокументировать в README)
+- [ ] Клиент A (`client_id=…`): **2** бота, `bot_type=default`
+- [ ] Клиент B (`client_id=…`): **1** бот, `bot_type=default`
+- [ ] Уникальные `port`; токены-заглушки / `token_ref` для локального просмотра; `desired_state` — разумный дефолт для демо (например `stopped`, чтобы не требовать живой Telegram до `ctl bots start`)
+- [ ] При необходимости — строка `bot_runner` runtime и привязка `runtime_id` / `assigned_node_id` под демо на одной ноде (согласовать с `NODE_ID` из `.env.example`)
+
+### PG.4. E2E на Postgres
+
+- [ ] Скрипты e2e (или отдельный `e2e-phase-pg.sh`) используют **`DATABASE_URL_E2E`**, не `DATABASE_URL`
+- [ ] Перед прогоном: migrate up на e2e-БД; без сидов dev (или свой минимальный фикстурный набор только в e2e)
+- [ ] Dev-БД и ручные сиды не затираются e2e
+
+**Проверка:** `docker compose up -d` → migrate up (dev) → seed вручную (dev) → `STORE=postgres` демо default; отдельно migrate + e2e на `mvp_manager_e2e`; memory ↔ postgres только конфигом
 
 ### Закрытие Phase PG
 
-- [ ] Адаптер + миграции готовы
+- [ ] Compose + две БД (dev/e2e) + миграции + ручные сиды + адаптер готовы
+- [ ] Документация запуска в корневом README и `.env.example` (`DATABASE_URL`, `DATABASE_URL_E2E`)
 - [ ] **Принято вами**
 
 ---
@@ -334,7 +387,7 @@
 | Граница MVP | **Весь проект** (Phase 0–4 + Phase PG); этапы сдаются по одному | 2026-07-17 |
 | Кто выдаёт задания | Пользователь сам | 2026-07-17 |
 | Хранилище на старте | **In-memory** за интерфейсами (`internal/store`); бизнес-логика не зависит от Postgres | 2026-07-17 |
-| PostgreSQL | Отдельная **Phase PG** после инструкций пользователя по запуску БД | 2026-07-17 |
+| PostgreSQL | **Phase PG**; `docker compose up -d`; миграции и сиды — ручные команды; без `clients`; сиды 2+1 default; e2e — **отдельная БД** (`DATABASE_URL_E2E`), не schema | 2026-07-17 |
 
 ---
 

@@ -45,21 +45,32 @@ go run ./cmd/handoff --out /tmp/handoff-demo --name demo --port 18080
 
 ### Позже (PostgreSQL) — Phase PG
 
-Когда пользователь даст инструкции по запуску БД (или попросит локальный compose):
+Требования зафиксированы в [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) (раздел Phase PG). Кратко:
+
+| Шаг | Команда | Когда |
+|---|---|---|
+| Поднять БД | `docker compose up -d` | одна команда — контейнер Postgres (две базы: dev + e2e) |
+| Миграции | `go run ./cmd/migrate up` (после реализации) | отдельно; для тестов — на `DATABASE_URL_E2E` |
+| Сиды | отдельная ручная команда seed | вручную в **dev**-БД; 2 клиента (UUID), 2+1 бота `default` |
+| Приложение | `STORE=postgres` + `DATABASE_URL` | рабочая БД `mvp_manager` |
+| E2E | `DATABASE_URL_E2E` → `mvp_manager_e2e` | та же инстанция Postgres, **другая база**, не schema |
+
+Таблицы `clients` нет — только `bots.client_id`. Полный адаптер и файлы — по вашему `/manager Phase PG` после перечитывания плана.
 
 ```bash
-# пример для локального compose (появится в Phase PG)
 docker compose up -d
-go run ./cmd/migrate up
-# STORE=postgres DATABASE_URL=... ./agent
+# далее (когда фаза будет реализована):
+# go run ./cmd/migrate up
+# go run ./cmd/migrate seed   # ориентир
+# STORE=postgres ./bin/agent
 ```
 
 Одна общая PostgreSQL на ноды (1–3 сервера) — целевая схема для multi-node.
 
 | Кто | Роль |
 |---|---|
-| Docker / админ / облако | запускает Postgres (по вашим инструкциям) |
-| `cmd/migrate` | схема (Phase PG) |
+| Docker Compose | запускает Postgres |
+| `cmd/migrate` | схема + (отдельно) сиды |
 | `agent`, `ctl`, … | работают через store-интерфейс |
 
 Go-модуль: **`mvp-manager`**. `bot-runner` — в этом же репозитории.
