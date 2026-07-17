@@ -33,7 +33,8 @@ const helpText = `mvp-manager agent — демон управления бота
   agent [-v|--version]
   agent
 
-ENV: NODE_ID (обяз.), STORE=memory, MEMORY_STORE_PATH (общий JSON с ctl),
+ENV: NODE_ID (обяз.), STORE=memory, MEMORY_STORE_PATH (общий JSON с ctl/runner/healthcheck),
+BOT_RUNNER_COMMAND, BOT_RUNNER_WORKDIR (опц.), BOT_RUNNER_HEALTH_PORT (опц.),
 RECONCILE_INTERVAL, HEARTBEAT_INTERVAL, SHUTDOWN_GRACE, PUBLIC_URL.
 См. .env.example и README.
 `
@@ -68,6 +69,7 @@ func main() {
 		"node_id", cfg.NodeID,
 		"store", storeKind,
 		"memory_store_path", cfg.MemoryStorePath,
+		"bot_runner_command", cfg.BotRunnerCommand,
 		"reconcile_interval", cfg.ReconcileInterval.String(),
 		"heartbeat_interval", cfg.HeartbeatInterval.String(),
 		"shutdown_grace", cfg.ShutdownGrace.String(),
@@ -96,6 +98,11 @@ func main() {
 	loop.ReconcileInterval = cfg.ReconcileInterval
 	loop.HeartbeatInterval = cfg.HeartbeatInterval
 	loop.PublicURL = cfg.PublicURL
+	loop.BotRunnerCommand = cfg.BotRunnerCommand
+	loop.BotRunnerWorkdir = cfg.BotRunnerWorkdir
+	loop.BotRunnerHealthPort = cfg.BotRunnerHealthPort
+	loop.StoreKind = storeKind
+	loop.MemoryStorePath = cfg.MemoryStorePath
 
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

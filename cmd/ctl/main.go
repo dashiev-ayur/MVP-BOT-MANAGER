@@ -1,12 +1,13 @@
 // Точка входа CLI ctl: обёртка над операциями store (создание ботов,
 // смена desired state и т.п.). Не смешивается с демоном agent.
 //
-// Phase 1: bots create/start/stop/list, runtimes list.
-// Общее состояние с agent — через MEMORY_STORE_PATH (file-backed memory).
+// Phase 1: custom bots; Phase 2: + default (привязка к bot_runner).
+// Общее состояние с agent/runner/healthcheck — через MEMORY_STORE_PATH.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -29,19 +30,25 @@ const helpText = `mvp-manager ctl — CLI управления ботами (о�
 Использование:
   ctl [-h|--help]
   ctl [-v|--version]
-  ctl bots create --name NAME --custom-name CN --port N --token TOKEN \
+  ctl bots create --type custom --name NAME --custom-name CN --port N --token TOKEN \
       --start-command CMD [--workdir DIR] [--channel telegram|max] \
       [--mode webhook|polling] [--artifact PATH]
+  ctl bots create --type default --name NAME --port N --token TOKEN \
+      [--mode webhook|polling] [--channel telegram|max]
   ctl bots start <bot-id>
   ctl bots stop <bot-id>
   ctl bots list
   ctl runtimes list
+  ctl runtimes start <runtime-id>
+  ctl runtimes stop <runtime-id>
 
 ENV (как у agent): NODE_ID, STORE=memory, MEMORY_STORE_PATH
-(по умолчанию .mvp-manager/store.json — общий файл с agent).
+(по умолчанию .mvp-manager/store.json — общий файл с agent/runner/healthcheck).
+
+Для default create нужен (или будет создан) runtime bot-runner-<NODE_ID>;
+команду запуска runner задаёт agent через BOT_RUNNER_COMMAND.
 
 Токен в MVP передаётся флагом --token (или ENV BOT_TOKEN как default для --token).
-Vault / control-api не используются.
 `
 
 func main() {
@@ -83,7 +90,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "runtimes":
-		if err := cmdRuntimes(ctx, st, args[1:]); err != nil {
+		if err := cmdRuntimes(ctx, cfg, st, args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "ctl runtimes: %v\n", err)
 			os.Exit(1)
 		}
@@ -117,11 +124,26 @@ func cmdBots(ctx context.Context, cfg config.Config, st *memory.Store, args []st
 	}
 }
 
-func cmdRuntimes(ctx context.Context, st *memory.Store, args []string) error {
-	if len(args) == 0 || args[0] != "list" {
-		return fmt.Errorf("usage: ctl runtimes list")
+func cmdRuntimes(ctx context.Context, cfg config.Config, st *memory.Store, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: ctl runtimes list|start|stop")
 	}
-	return runtimesList(ctx, st)
+	switch args[0] {
+	case "list":
+		return runtimesList(ctx, st)
+	case "start":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: ctl runtimes start <runtime-id>")
+		}
+		return runtimeSetDesired(ctx, st, args[1], store.DesiredRunning)
+	case "stop":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: ctl runtimes stop <runtime-id>")
+		}
+		return runtimeSetDesired(ctx, st, args[1], store.DesiredStopped)
+	default:
+		return fmt.Errorf("неизвестная подкоманда runtimes %q", args[0])
+	}
 }
 
 func botsCreate(ctx context.Context, cfg config.Config, st *memory.Store, args []string) error {
@@ -139,30 +161,39 @@ func botsCreate(ctx context.Context, cfg config.Config, st *memory.Store, args [
 		fs[key] = args[i]
 	}
 
+	botType := fs["type"]
+	if botType == "" {
+		botType = fs["bot-type"]
+	}
+	// Обратная совместимость Phase 1: без --type, но с --custom-name → custom.
+	if botType == "" {
+		if fs["custom-name"] != "" {
+			botType = string(store.BotTypeCustom)
+		} else {
+			return fmt.Errorf("--type обязателен (custom|default|default_extended)")
+		}
+	}
+
+	switch store.BotType(botType) {
+	case store.BotTypeCustom:
+		return botsCreateCustom(ctx, cfg, st, fs)
+	case store.BotTypeDefault, store.BotTypeDefaultExtended:
+		return botsCreateDefault(ctx, cfg, st, fs, store.BotType(botType))
+	default:
+		return fmt.Errorf("неизвестный --type %q", botType)
+	}
+}
+
+func botsCreateCustom(ctx context.Context, cfg config.Config, st *memory.Store, fs map[string]string) error {
 	name := fs["name"]
 	customName := fs["custom-name"]
 	startCmd := fs["start-command"]
-	token := fs["token"]
-	if token == "" {
-		token = strings.TrimSpace(os.Getenv("BOT_TOKEN"))
-	}
+	token := tokenFromFlags(fs)
 	workdir := fs["workdir"]
 	artifact := fs["artifact"]
-	channel := fs["channel"]
-	if channel == "" {
-		channel = string(store.BotChannelTelegram)
-	}
-	mode := fs["mode"]
-	if mode == "" {
-		mode = string(store.BotRunModeWebhook)
-	}
-	portStr := fs["port"]
-	if portStr == "" {
-		return fmt.Errorf("--port обязателен")
-	}
-	port, err := strconv.Atoi(portStr)
+	channel, mode, port, err := channelModePort(fs)
 	if err != nil {
-		return fmt.Errorf("--port: %w", err)
+		return err
 	}
 
 	if err := launch.ValidateCustomCreate(name, customName, startCmd, port, token); err != nil {
@@ -214,13 +245,128 @@ func botsCreate(ctx context.Context, cfg config.Config, st *memory.Store, args [
 		AssignedNodeID: &nodeID,
 	})
 	if err != nil {
-		// Runtime уже создан; полного Delete runtime в API нет — сообщаем id.
 		return fmt.Errorf("create bot (runtime %s уже создан): %w", rt.ID, err)
 	}
 
-	fmt.Printf("created bot_id=%s runtime_id=%s port=%d custom_name=%s\n",
+	fmt.Printf("created bot_id=%s runtime_id=%s port=%d custom_name=%s type=custom\n",
 		bot.ID, rt.ID, bot.Port, customName)
 	return nil
+}
+
+func botsCreateDefault(ctx context.Context, cfg config.Config, st *memory.Store, fs map[string]string, botType store.BotType) error {
+	name := fs["name"]
+	token := tokenFromFlags(fs)
+	channel, mode, port, err := channelModePort(fs)
+	if err != nil {
+		return err
+	}
+	if err := launch.ValidateDefaultCreate(name, port, token); err != nil {
+		return err
+	}
+	if fs["custom-name"] != "" {
+		return fmt.Errorf("custom-name недопустим для type=%s", botType)
+	}
+	if fs["start-command"] != "" {
+		return fmt.Errorf("start-command недопустим для type=%s (команда у bot-runner)", botType)
+	}
+
+	nodeID := cfg.NodeID
+	rt, err := getOrCreateBotRunnerRuntime(ctx, cfg, st, nodeID)
+	if err != nil {
+		return err
+	}
+
+	bot, err := st.Bots.Create(ctx, store.Bot{
+		Name:           name,
+		BotType:        botType,
+		CustomName:     nil,
+		Channel:        store.BotChannel(channel),
+		RunMode:        store.BotRunMode(mode),
+		Port:           port,
+		TokenRef:       token,
+		RuntimeID:      &rt.ID,
+		DesiredState:   store.DesiredStopped,
+		ActualState:    store.ActualUnknown,
+		AssignedNodeID: &nodeID,
+	})
+	if err != nil {
+		return fmt.Errorf("create bot: %w", err)
+	}
+
+	fmt.Printf("created bot_id=%s runtime_id=%s port=%d type=%s\n",
+		bot.ID, rt.ID, bot.Port, botType)
+	return nil
+}
+
+// getOrCreateBotRunnerRuntime — runtime kind=bot_runner для NODE_ID.
+// StartCommand может быть пустым до первого старта agent (подставит из ENV);
+// если BOT_RUNNER_COMMAND задан в окружении ctl — записываем сразу.
+func getOrCreateBotRunnerRuntime(ctx context.Context, cfg config.Config, st *memory.Store, nodeID string) (store.Runtime, error) {
+	name := launch.BotRunnerRuntimeName(nodeID)
+	rt, err := st.Runtimes.ByName(ctx, name)
+	if err == nil {
+		// Обновим команду, если в ENV ctl она есть, а в store пусто/устарела.
+		if cfg.BotRunnerCommand != "" && rt.StartCommand != cfg.BotRunnerCommand {
+			rt.StartCommand = cfg.BotRunnerCommand
+			if cfg.BotRunnerWorkdir != "" {
+				wd := cfg.BotRunnerWorkdir
+				rt.Workdir = &wd
+			}
+			return st.Runtimes.Update(ctx, rt)
+		}
+		return rt, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return store.Runtime{}, err
+	}
+
+	cmd := cfg.BotRunnerCommand
+	if cmd == "" {
+		// Плейсхолдер: agent при ensure подставит/проверит BOT_RUNNER_COMMAND.
+		cmd = "bot-runner"
+	}
+	var wd *string
+	if cfg.BotRunnerWorkdir != "" {
+		w := cfg.BotRunnerWorkdir
+		wd = &w
+	}
+	return st.Runtimes.Create(ctx, store.Runtime{
+		Kind:           store.RuntimeKindBotRunner,
+		Name:           name,
+		StartCommand:   cmd,
+		Workdir:        wd,
+		DesiredState:   store.DesiredStopped,
+		ActualState:    store.ActualUnknown,
+		AssignedNodeID: &nodeID,
+	})
+}
+
+func tokenFromFlags(fs map[string]string) string {
+	token := fs["token"]
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv("BOT_TOKEN"))
+	}
+	return token
+}
+
+func channelModePort(fs map[string]string) (channel, mode string, port int, err error) {
+	channel = fs["channel"]
+	if channel == "" {
+		channel = string(store.BotChannelTelegram)
+	}
+	mode = fs["mode"]
+	if mode == "" {
+		mode = string(store.BotRunModeWebhook)
+	}
+	portStr := fs["port"]
+	if portStr == "" {
+		return "", "", 0, fmt.Errorf("--port обязателен")
+	}
+	port, err = strconv.Atoi(portStr)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("--port: %w", err)
+	}
+	return channel, mode, port, nil
 }
 
 func botsStart(ctx context.Context, st *memory.Store, botID string) error {
@@ -240,16 +386,18 @@ func botsStart(ctx context.Context, st *memory.Store, botID string) error {
 		return err
 	}
 
-	// Сброс failed/stopped → unknown, чтобы reconcile снова сделал Start
-	// (без авто-рестарта сразу после краша).
 	rt, err := st.Runtimes.ByID(ctx, rtID)
 	if err != nil {
 		return err
 	}
+	// Для custom — сброс failed как в Phase 1.
+	// Для bot_runner — тоже, чтобы reconcile снова поднял процесс.
 	if rt.ActualState == store.ActualFailed || rt.ActualState == store.ActualStopped {
 		_ = st.Runtimes.UpdateActual(ctx, rtID, store.RuntimeActualPatch{
 			ActualState: store.ActualUnknown,
 		})
+	}
+	if bot.ActualState == store.ActualFailed || bot.ActualState == store.ActualStopped {
 		_ = st.Bots.UpdateActual(ctx, botID, store.BotActualPatch{
 			ActualState: store.ActualUnknown,
 		})
@@ -272,10 +420,64 @@ func botsStop(ctx context.Context, st *memory.Store, botID string) error {
 	if err := st.Bots.UpdateDesiredState(ctx, botID, store.DesiredStopped); err != nil {
 		return err
 	}
-	if err := st.Runtimes.UpdateDesiredState(ctx, rtID, store.DesiredStopped); err != nil {
+
+	rt, err := st.Runtimes.ByID(ctx, rtID)
+	if err != nil {
 		return err
 	}
+
+	// custom 1:1 — стопаем runtime вместе с ботом.
+	// bot_runner — стопаем runtime только если больше нет desired=running default*.
+	if rt.Kind == store.RuntimeKindCustomBot {
+		if err := st.Runtimes.UpdateDesiredState(ctx, rtID, store.DesiredStopped); err != nil {
+			return err
+		}
+	} else if rt.Kind == store.RuntimeKindBotRunner {
+		still, err := anyDefaultRunning(ctx, st, rtID, botID)
+		if err != nil {
+			return err
+		}
+		if !still {
+			if err := st.Runtimes.UpdateDesiredState(ctx, rtID, store.DesiredStopped); err != nil {
+				return err
+			}
+		}
+	}
+
 	fmt.Printf("desired=stopped bot_id=%s runtime_id=%s\n", botID, rtID)
+	return nil
+}
+
+func anyDefaultRunning(ctx context.Context, st *memory.Store, runtimeID, exceptBotID string) (bool, error) {
+	bots, err := st.Bots.ListByRuntime(ctx, runtimeID)
+	if err != nil {
+		return false, err
+	}
+	for _, b := range bots {
+		if b.ID == exceptBotID {
+			continue
+		}
+		if launch.IsDefaultType(b.BotType) && b.DesiredState == store.DesiredRunning {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func runtimeSetDesired(ctx context.Context, st *memory.Store, runtimeID string, desired store.DesiredState) error {
+	rt, err := st.Runtimes.ByID(ctx, runtimeID)
+	if err != nil {
+		return err
+	}
+	if err := st.Runtimes.UpdateDesiredState(ctx, runtimeID, desired); err != nil {
+		return err
+	}
+	if desired == store.DesiredRunning && (rt.ActualState == store.ActualFailed || rt.ActualState == store.ActualStopped) {
+		_ = st.Runtimes.UpdateActual(ctx, runtimeID, store.RuntimeActualPatch{
+			ActualState: store.ActualUnknown,
+		})
+	}
+	fmt.Printf("runtime desired=%s runtime_id=%s kind=%s\n", desired, runtimeID, rt.Kind)
 	return nil
 }
 
@@ -285,14 +487,18 @@ func botsList(ctx context.Context, st *memory.Store) error {
 		return err
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tNAME\tTYPE\tPORT\tDESIRED\tACTUAL\tRUNTIME_ID")
+	fmt.Fprintln(w, "ID\tNAME\tTYPE\tPORT\tDESIRED\tACTUAL\tRUNTIME_ID\tLAST_ERROR")
 	for _, b := range bots {
 		rt := ""
 		if b.RuntimeID != nil {
 			rt = *b.RuntimeID
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
-			b.ID, b.Name, b.BotType, b.Port, b.DesiredState, b.ActualState, rt)
+		lastErr := ""
+		if b.LastError != nil {
+			lastErr = *b.LastError
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
+			b.ID, b.Name, b.BotType, b.Port, b.DesiredState, b.ActualState, rt, lastErr)
 	}
 	return w.Flush()
 }

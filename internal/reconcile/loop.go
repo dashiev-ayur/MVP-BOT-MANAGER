@@ -1,6 +1,7 @@
-// Package reconcile сводит desired↔actual для custom_bot на ноде агента.
+// Package reconcile сводит desired↔actual для custom_bot и bot_runner на ноде.
 //
-// Phase 1: только kind=custom_bot (bot_runner / default* — позже).
+// Phase 1: kind=custom_bot.
+// Phase 2: + ensure bot_runner для default*, реакция на unhealthy от healthcheck.
 // Не импортирует pgx/database/sql — только интерфейсы store и supervisor.
 package reconcile
 
@@ -27,8 +28,17 @@ type Loop struct {
 
 	ReconcileInterval time.Duration
 	HeartbeatInterval time.Duration
-	// PublicURL прокидывается в ENV дочернего процесса (опционально).
+	// PublicURL прокидывается в ENV дочернего custom-процесса (опционально).
 	PublicURL string
+
+	// Параметры запуска bot-runner (из конфига агента, ТЗ §10.1).
+	BotRunnerCommand    string
+	BotRunnerWorkdir    string
+	BotRunnerHealthPort string
+	// StoreKind / MemoryStorePath — прокидываются в ENV дочернего runner
+	// (общий MEMORY_STORE_PATH критичен для multi-process memory store).
+	StoreKind       string
+	MemoryStorePath string
 
 	log *slog.Logger
 }
@@ -94,22 +104,25 @@ func (l *Loop) Heartbeat(ctx context.Context) error {
 	return nil
 }
 
-// Tick — один проход сверки custom_bot на этой ноде.
+// Tick — один проход сверки на этой ноде.
 //
 // Алгоритм:
-//  1. ListByNode runtimes;
-//  2. для kind=custom_bot:
-//     - desired=running и процесс не жив → Start (+ starting→running / failed);
-//     - desired=stopped и процесс жив → Stop → stopped;
-//     - процесс умер при desired=running → actual=failed;
-//  3. синхронизировать actual_state связанного бота.
+//  1. ensure bot_runner (default*-боты, unhealthy→restart);
+//  2. ListByNode runtimes → custom_bot как в Phase 1;
+//  3. actual_state custom-ботов синхронизируется с runtime;
+//     actual_state default*-ботов пишет сам bot-runner / healthcheck.
 func (l *Loop) Tick(ctx context.Context) error {
+	var first error
+	if err := l.ensureBotRunner(ctx); err != nil {
+		l.log.Warn("reconcile bot_runner", "err", err)
+		first = err
+	}
+
 	runtimes, err := l.Runtimes.ListByNode(ctx, l.NodeID)
 	if err != nil {
 		return fmt.Errorf("list runtimes by node: %w", err)
 	}
 
-	var first error
 	for _, rt := range runtimes {
 		if rt.Kind != store.RuntimeKindCustomBot {
 			continue
@@ -130,13 +143,13 @@ func (l *Loop) Shutdown(ctx context.Context) error {
 	if err := l.Supervisor.StopAll(ctx); err != nil {
 		return err
 	}
-	// Помечаем actual=stopped для custom на ноде, у которых мы держали процессы.
+	// Помечаем actual=stopped для runtimes на ноде, у которых мы держали процессы.
 	runtimes, err := l.Runtimes.ListByNode(ctx, l.NodeID)
 	if err != nil {
 		return err
 	}
 	for _, rt := range runtimes {
-		if rt.Kind != store.RuntimeKindCustomBot {
+		if rt.Kind != store.RuntimeKindCustomBot && rt.Kind != store.RuntimeKindBotRunner {
 			continue
 		}
 		snap, ok := l.Supervisor.Snapshot(rt.ID)
@@ -149,7 +162,18 @@ func (l *Loop) Shutdown(ctx context.Context) error {
 			ExitCode:    snapExit(snap, ok),
 			LastError:   nil,
 		})
-		l.syncBotsActual(ctx, rt.ID, store.ActualStopped, nil)
+		if rt.Kind == store.RuntimeKindCustomBot {
+			l.syncBotsActual(ctx, rt.ID, store.ActualStopped, nil)
+		} else {
+			// default*: помечаем stopped без затирания через sync «всех как runtime».
+			bots, _ := l.Bots.ListByRuntime(ctx, rt.ID)
+			for _, b := range bots {
+				_ = l.Bots.UpdateActual(ctx, b.ID, store.BotActualPatch{
+					ActualState: store.ActualStopped,
+					LastError:   nil,
+				})
+			}
+		}
 		l.Supervisor.Forget(rt.ID)
 	}
 	return nil

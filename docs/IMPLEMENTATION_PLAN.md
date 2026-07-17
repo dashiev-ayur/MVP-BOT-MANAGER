@@ -33,7 +33,7 @@
 |---|---|---|
 | 0 | Каркас + in-memory store | ✅ принята |
 | 1 | Custom-бот + supervisor + ctl | ✅ принята |
-| 2 | Multi-tenant runner + healthcheck | ⏳ не начата |
+| 2 | Multi-tenant runner + healthcheck | ✅ принята |
 | PG | PostgreSQL (адаптер store) | ⏳ не начата |
 | 3 | Типы, lease, migrate, API | ⏳ не начата |
 | 4 | Укрепление (hardening) | ⏳ не начата |
@@ -160,39 +160,39 @@
 
 **Зачем:** много default-ботов в одном OS-процессе + отдельная проверка `/healthz`.
 
-**Статус фазы:** ⏳ не начата  
+**Статус фазы:** ✅ принята (lifecycle 2.1–2.4; блок 2.5 — отдельно)  
 **Старт только после:** Phase 1 → ✅ принята
 
 ### 2.1. Размещение runner (зафиксировано)
 
 - [x] Вариант **A**: monorepo `cmd/bot-runner` + `internal/runner` (решение 2026-07-17)
-- [ ] Краткая запись в README корня проекта при появлении кода
+- [x] Краткая запись в README корня проекта при появлении кода
 
 ### 2.2. Ядро bot-runner (lifecycle без полного Telegram)
 
-- [ ] Загрузка default*-ботов из store по ноде / runtime / desired
-- [ ] In-memory реестр инстансов
-- [ ] Динамический add / remove / reload по `config_version`
-- [ ] Сценарий `default` (минимум: healthz + заглушка логики)
-- [ ] Webhook: listen на уникальном `port` бота
-- [ ] Polling: горутина без bind порта (порт зарезервирован в БД)
+- [x] Загрузка default*-ботов из store по ноде / runtime / desired
+- [x] In-memory реестр инстансов
+- [x] Динамический add / remove / reload по `config_version`
+- [x] Сценарий `default` (минимум: healthz + заглушка логики)
+- [x] Webhook: listen на уникальном `port` бота
+- [x] Polling: горутина без bind порта (порт зарезервирован в БД)
 
 **Проверка:** 2 default webhook-бота → **один** PID runner, оба порта отдают `/healthz`
 
 ### 2.3. Агент управляет процессом runner
 
-- [ ] Если есть running default* — обеспечить runtime `bot_runner` на ноде
-- [ ] Старт / стоп бинарника runner через supervisor
-- [ ] Привязка `bots.runtime_id`
+- [x] Если есть running default* — обеспечить runtime `bot_runner` на ноде
+- [x] Старт / стоп бинарника runner через supervisor
+- [x] Привязка `bots.runtime_id`
 
 **Проверка:** stop runner в store → PID убит; start → инстансы снова живы
 
 ### 2.4. Healthcheck (отдельный cmd)
 
-- [ ] Бинарник `cmd/healthcheck`
-- [ ] Опрос `/healthz` только у webhook + desired=running
-- [ ] Пишет статус / events в store; **сам не рестартит**
-- [ ] Агент реагирует на unhealthy/failed (рестарт по policy)
+- [x] Бинарник `cmd/healthcheck`
+- [x] Опрос `/healthz` только у webhook + desired=running
+- [x] Пишет статус / events в store; **сам не рестартит**
+- [x] Агент реагирует на unhealthy/failed (рестарт по policy)
 
 **Проверка:** «сломать» healthz → unhealthy в store → агент восстанавливает
 
@@ -208,11 +208,11 @@
 
 ### Закрытие Phase 2
 
-- [ ] ≥2 default в одном процессе runner
-- [ ] Unique port соблюдается
-- [ ] Custom из Phase 1 по-прежнему работает
-- [ ] Есть бинарники: `agent`, `bot-runner`, `healthcheck`, `ctl`
-- [ ] **Принято вами**
+- [x] ≥2 default в одном процессе runner
+- [x] Unique port соблюдается
+- [x] Custom из Phase 1 по-прежнему работает
+- [x] Есть бинарники: `agent`, `bot-runner`, `healthcheck`, `ctl`
+- [x] **Принято вами** (2026-07-17; lifecycle 2.1–2.4; блок 2.5 открыт)
 
 ---
 
