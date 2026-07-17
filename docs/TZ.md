@@ -695,15 +695,17 @@ POST /v1/bots/{id}/migrate
 | HTTP API | `cmd/control-api` (не смешивать с ядром агента) |
 | CLI | `cmd/ctl` |
 | Handoff | Исходники Go/Node + launch contract; утилита `cmd/handoff` позже |
+| Go-модуль | `mvp-manager` |
+| `bot-runner` | Monorepo: `cmd/bot-runner` + `internal/runner` |
+| Объём MVP | Весь проект по плану (Phase 0–4); сдача поэтапная с ручной приёмкой |
 | Масштаб | MVP: 1 нода; дизайн на 2–3 |
 | Авто-failover | Нет в MVP |
+| Запуск БД | Инструкции пользователя позже |
 
 ---
 
 ## 19. Дальнейшие шаги
 
-1. Утвердить v0.3 (разделение cmd + healthcheck).  
-2. Phase 0–1 (`agent` + custom + `ctl`).  
-3. Phase 2 (`bot-runner` + `healthcheck`).  
-4. При второй ноде — вынести `control-api`.  
-5. Шаблон handoff для default → single-bot репо.
+1. Пользователь выдаёт задания manager по одному этапу.  
+2. До инструкций по БД — не фиксировать prod-деплой Postgres; локальный compose — по заданию Phase 0.2, если пользователь не укажет иное.  
+3. Phase 0 → … → Phase 4 с ручной приёмкой каждого этапа.

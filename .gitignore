@@ -1,0 +1,48 @@
+# Binaries
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/agent
+/ctl
+/migrate
+/bot-runner
+/healthcheck
+/control-api
+
+# Test / coverage
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Go workspace (local)
+go.work
+go.work.sum
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+tmp/
+temp/
+.cache/
+
+# Docker volumes / local data (if ever mounted here)
+postgres-data/
+.data/
