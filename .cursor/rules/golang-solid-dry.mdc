@@ -1,0 +1,73 @@
+---
+description: SOLID и DRY в Go — практично, без лишних слоёв
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go: SOLID и DRY
+
+Применяй принципы как эвристики, не как культ. В Go интерфейсы маленькие и объявляются у потребителя.
+
+## SRP — одна причина менять
+
+- Пакет/тип решает одну задачу: supervisor ≠ HTTP API ≠ SQL.
+- `cmd/*` — тонкий `main`; логика в `internal/...`.
+
+```go
+// ❌ BAD: всё в одном типе
+type App struct{ /* db, http, processes, health */ }
+
+// ✅ GOOD: состав из маленьких частей
+type Agent struct {
+    Nodes      *node.Registrar
+    Supervisor *supervisor.Supervisor
+    Reconcile  *reconcile.Loop
+}
+```
+
+## OCP — расширяй без ломки ядра
+
+- Новые `bot_type` / сценарии — новые реализации, не раздувание `switch` на сотни строк без нужды.
+- Для 2–3 веток простой `switch` нормален; интерфейс — когда появляется 2+ реализации или тест требует подмены.
+
+## LSP — подмены не сюрпризят
+
+- Реализация интерфейса не должна ужесточать контракт (не паниковать там, где другие возвращают `error`).
+- Поведение по ошибкам и `context` отмены — одинаково ожидаемое.
+
+## ISP — узкие интерфейсы
+
+```go
+// ❌ BAD
+type Store interface {
+    SaveBot(context.Context, Bot) error
+    ListBots(context.Context) ([]Bot, error)
+    SaveNode(context.Context, Node) error
+    // ...
+}
+
+// ✅ GOOD — у потребителя
+type BotRepository interface {
+    Save(context.Context, Bot) error
+    ByID(context.Context, uuid.UUID) (Bot, error)
+}
+```
+
+## DIP — завись от абстракций на границах
+
+- Домен/`reconcile` зависят от интерфейсов; `pgx`-реализация — в `internal/db`.
+- Не протаскивай `*pgxpool.Pool` глубоко в бизнес-логику.
+- Конструкторы принимают зависимости явно: `NewLoop(repo BotRepository, sup Starter)`.
+
+## DRY — без копипасты и без «магических» утилит
+
+- Дублирование 2 похожих блоков → вынеси функцию/метод в том же пакете.
+- Не создавай общий `utils` заранее. Повторился третий раз в разных пакетах — тогда общая точка.
+- Конфиг, маппинг ошибок, сбор env для launch contract — одно место, много вызовов.
+
+## Антипаттерны
+
+- Интерфейс с одной реализацией «на всякий случай».
+- Наследование через глубокие эмбеды вместо композиции.
+- Общий «BaseService» на все use-case.
+- DRY ценой нечитаемых generic-хелперов.
