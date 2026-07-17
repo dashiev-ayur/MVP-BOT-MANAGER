@@ -14,7 +14,11 @@ import (
 // В Go один тип не может реализовать Node/Runtime/Bot репозитории сразу:
 // методы ByID, List, Create, Update отличаются только типами возврата.
 // Поэтому три тонких адаптера (Nodes / Runtimes / Bots) делят общее
-// состояние shared и мьютекс — снаружи это один объект New().
+// состояние shared и мьютекс — снаружи это один объект New()/Open().
+//
+// File-backed режим (Open): каждый вызов репозитория под flock перечитывает
+// JSON с диска и при мутации записывает обратно. Так отдельные процессы
+// agent и ctl видят одно состояние при STORE=memory (Phase 1 E2E).
 type Store struct {
 	Nodes    *NodeRepo
 	Runtimes *RuntimeRepo
@@ -23,7 +27,10 @@ type Store struct {
 
 // shared — внутренние maps и индексы UNIQUE под одним RWMutex.
 type shared struct {
-	mu sync.RWMutex
+	mu sync.Mutex
+
+	// path — путь к JSON-файлу; пустая строка = только RAM (без диска).
+	path string
 
 	nodes    map[string]store.Node
 	runtimes map[string]store.Runtime
@@ -51,10 +58,31 @@ type RuntimeRepo struct{ s *shared }
 // BotRepo реализует store.BotRepository над общим shared.
 type BotRepo struct{ s *shared }
 
-// New создаёт пустое хранилище. Данные не персистятся на диск:
-// рестарт процесса = пустое состояние (ок для Phase 0 / memory).
+// New создаёт пустое хранилище только в RAM (без файла).
+// Удобно для юнит-тестов: процессы не делят состояние.
 func New() *Store {
+	return newStore("")
+}
+
+// Open создаёт store с persistence в path.
+// Пустой path эквивалентен New(). Файл создаётся при первой записи.
+func Open(path string) (*Store, error) {
+	st := newStore(path)
+	if path == "" {
+		return st, nil
+	}
+	// Первичная загрузка / создание файла — чтобы сразу поймать ошибки пути.
+	st.shared().mu.Lock()
+	defer st.shared().mu.Unlock()
+	if err := st.shared().withDiskLocked(false, func() error { return nil }); err != nil {
+		return nil, err
+	}
+	return st, nil
+}
+
+func newStore(path string) *Store {
 	sh := &shared{
+		path:          path,
 		nodes:         make(map[string]store.Node),
 		runtimes:      make(map[string]store.Runtime),
 		bots:          make(map[string]store.Bot),
@@ -66,6 +94,35 @@ func New() *Store {
 		Runtimes: &RuntimeRepo{s: sh},
 		Bots:     &BotRepo{s: sh},
 	}
+}
+
+// Path возвращает путь file-backed store (пустая строка = только RAM).
+func (st *Store) Path() string {
+	return st.shared().path
+}
+
+func (st *Store) shared() *shared {
+	return st.Nodes.s
+}
+
+// doWrite — мутация: под mutex (+ flock/reload/save при path != "").
+func (s *shared) doWrite(ctx context.Context, fn func() error) error {
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.withDiskLocked(true, fn)
+}
+
+// doRead — чтение: под mutex (+ flock/reload при path != ""), без записи на диск.
+func (s *shared) doRead(ctx context.Context, fn func() error) error {
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.withDiskLocked(false, fn)
 }
 
 // checkCtx — ранняя проверка отмены до захвата мьютекса.

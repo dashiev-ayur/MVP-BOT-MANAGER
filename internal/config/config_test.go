@@ -1,8 +1,10 @@
 package config_test
 
 import (
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"mvp-manager/internal/config"
 )
@@ -95,4 +97,73 @@ func TestLoad_PostgresAcceptedAsKnownStore(t *testing.T) {
 	if cfg.DatabaseURL == "" {
 		t.Fatal("DatabaseURL должен быть прочитан из ENV")
 	}
+}
+
+// TestLoad_MemoryStorePathUnsetUsesDefault — переменная не задана → дефолтный файл.
+func TestLoad_MemoryStorePathUnsetUsesDefault(t *testing.T) {
+	t.Setenv(config.EnvNodeID, "node-1")
+	t.Setenv(config.EnvStore, config.StoreMemory)
+	unsetEnv(t, config.EnvMemoryStorePath)
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MemoryStorePath != config.DefaultMemoryStorePath {
+		t.Fatalf("MemoryStorePath: got %q, want %q", cfg.MemoryStorePath, config.DefaultMemoryStorePath)
+	}
+}
+
+// TestLoad_MemoryStorePathEmptyDisablesPersistence — MEMORY_STORE_PATH="" → без файла.
+func TestLoad_MemoryStorePathEmptyDisablesPersistence(t *testing.T) {
+	t.Setenv(config.EnvNodeID, "node-1")
+	t.Setenv(config.EnvStore, config.StoreMemory)
+	t.Setenv(config.EnvMemoryStorePath, "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MemoryStorePath != "" {
+		t.Fatalf("MemoryStorePath: got %q, want empty", cfg.MemoryStorePath)
+	}
+}
+
+// TestLoad_IntervalsFromEnv проверяет парсинг duration-переменных.
+func TestLoad_IntervalsFromEnv(t *testing.T) {
+	t.Setenv(config.EnvNodeID, "node-1")
+	t.Setenv(config.EnvStore, config.StoreMemory)
+	t.Setenv(config.EnvReconcileInterval, "2s")
+	t.Setenv(config.EnvHeartbeatInterval, "4s")
+	t.Setenv(config.EnvShutdownGrace, "8s")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ReconcileInterval != 2*time.Second {
+		t.Fatalf("ReconcileInterval: got %v", cfg.ReconcileInterval)
+	}
+	if cfg.HeartbeatInterval != 4*time.Second {
+		t.Fatalf("HeartbeatInterval: got %v", cfg.HeartbeatInterval)
+	}
+	if cfg.ShutdownGrace != 8*time.Second {
+		t.Fatalf("ShutdownGrace: got %v", cfg.ShutdownGrace)
+	}
+}
+
+// unsetEnv снимает переменную на время теста (t.Setenv не умеет unset).
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	orig, had := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("Unsetenv %s: %v", key, err)
+	}
+	t.Cleanup(func() {
+		if had {
+			_ = os.Setenv(key, orig)
+		} else {
+			_ = os.Unsetenv(key)
+		}
+	})
 }

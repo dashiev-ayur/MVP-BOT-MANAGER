@@ -1,8 +1,9 @@
 // Точка входа демона agent: на каждой ноде следит за desired/actual
-// состоянием ботов и управляет процессами (Phase 1+).
+// состоянием ботов и управляет процессами.
 //
-// Phase 0.4: Load конфига → wiring STORE=memory → регистрация ноды →
-// ожидание SIGINT/SIGTERM и тихий выход. Без reconcile loop.
+// Phase 1: Load конфига → wiring STORE=memory (file-backed) → регистрация
+// ноды → heartbeat + reconcile loop → при SIGINT/SIGTERM остановка
+// управляемых процессов (shutdown grace).
 package main
 
 import (
@@ -12,10 +13,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"mvp-manager/internal/config"
+	"mvp-manager/internal/reconcile"
 	"mvp-manager/internal/store"
 	"mvp-manager/internal/storeopen"
+	"mvp-manager/internal/supervisor"
 )
 
 // version — строка версии бинарника; позже можно подставлять через -ldflags.
@@ -29,8 +33,8 @@ const helpText = `mvp-manager agent — демон управления бота
   agent [-v|--version]
   agent
 
-При запуске без флагов читает конфиг из ENV (NODE_ID, STORE; по умолчанию
-STORE=memory), создаёт store, регистрирует ноду и ждёт SIGINT/SIGTERM.
+ENV: NODE_ID (обяз.), STORE=memory, MEMORY_STORE_PATH (общий JSON с ctl),
+RECONCILE_INTERVAL, HEARTBEAT_INTERVAL, SHUTDOWN_GRACE, PUBLIC_URL.
 См. .env.example и README.
 `
 
@@ -54,7 +58,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	st, storeKind, err := storeopen.Open(cfg.Store)
+	st, storeKind, err := storeopen.Open(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "agent: store: %v\n", err)
 		os.Exit(1)
@@ -63,6 +67,10 @@ func main() {
 	slog.Info("конфиг загружен",
 		"node_id", cfg.NodeID,
 		"store", storeKind,
+		"memory_store_path", cfg.MemoryStorePath,
+		"reconcile_interval", cfg.ReconcileInterval.String(),
+		"heartbeat_interval", cfg.HeartbeatInterval.String(),
+		"shutdown_grace", cfg.ShutdownGrace.String(),
 	)
 
 	// Регистрация ноды в store (Upsert по NODE_ID) — агент «появляется» в реестре.
@@ -83,11 +91,27 @@ func main() {
 	}
 	slog.Info("нода зарегистрирована", "node_id", cfg.NodeID, "hostname", hostname)
 
-	// Ждём SIGINT/SIGTERM: context отменяется → тихий выход без reconcile (Phase 1).
+	sup := supervisor.New(cfg.ShutdownGrace)
+	loop := reconcile.New(cfg.NodeID, st.Nodes, st.Runtimes, st.Bots, sup)
+	loop.ReconcileInterval = cfg.ReconcileInterval
+	loop.HeartbeatInterval = cfg.HeartbeatInterval
+	loop.PublicURL = cfg.PublicURL
+
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	slog.Info("agent запущен, ожидание сигнала завершения")
-	<-runCtx.Done()
-	// Тихий выход: без лишнего Fatal/паники; defer stop снимет обработчики сигналов.
+	slog.Info("agent запущен: heartbeat + reconcile")
+	runErr := loop.Run(runCtx)
+	if runErr != nil && runCtx.Err() == nil {
+		fmt.Fprintf(os.Stderr, "agent: reconcile: %v\n", runErr)
+		os.Exit(1)
+	}
+
+	// Shutdown: остановить управляемые процессы с grace из конфига.
+	shutCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownGrace+5*time.Second)
+	defer cancel()
+	if err := loop.Shutdown(shutCtx); err != nil {
+		slog.Warn("shutdown", "err", err)
+	}
+	slog.Info("agent остановлен")
 }

@@ -1,4 +1,4 @@
-// Package storeopen — тонкий wiring выбора реализации store по строке STORE.
+// Package storeopen — тонкий wiring выбора реализации store по конфигу.
 //
 // Вынесен из cmd/*, чтобы agent и ctl не дублировали switch memory/postgres.
 // Бизнес-пакеты (reconcile и т.п.) этот пакет не импортируют — только main.
@@ -13,14 +13,18 @@ import (
 
 // Open создаёт store по значению STORE из конфига.
 //
-//   - memory → готовый in-memory фасад;
+//   - memory → file-backed (или RAM, если MemoryStorePath пуст);
 //   - postgres → понятная ошибка «пока не реализовано» (Phase PG), без dial БД.
 //
 // Второй результат — каноническое имя бэкенда для логов (store=memory).
-func Open(storeKind string) (*memory.Store, string, error) {
-	switch storeKind {
+func Open(cfg config.Config) (*memory.Store, string, error) {
+	switch cfg.Store {
 	case config.StoreMemory:
-		return memory.New(), config.StoreMemory, nil
+		st, err := memory.Open(cfg.MemoryStorePath)
+		if err != nil {
+			return nil, "", fmt.Errorf("open memory store: %w", err)
+		}
+		return st, config.StoreMemory, nil
 	case config.StorePostgres:
 		// Явно не трогаем DATABASE_URL и не импортируем pgx — Phase PG.
 		return nil, "", fmt.Errorf(
@@ -30,6 +34,6 @@ func Open(storeKind string) (*memory.Store, string, error) {
 		)
 	default:
 		// config.Load уже отсекает неизвестные значения; защита на границе wiring.
-		return nil, "", fmt.Errorf("неизвестный store %q", storeKind)
+		return nil, "", fmt.Errorf("неизвестный store %q", cfg.Store)
 	}
 }

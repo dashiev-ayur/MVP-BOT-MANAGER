@@ -25,24 +25,29 @@
 
 Переключение — конфигом, без переписывания бизнес-логики.
 
-### Сейчас (in-memory)
+### Сейчас (in-memory, Phase 1)
 
-Отдельный Postgres **не нужен**. Достаточно запустить `agent` / `ctl` с `STORE=memory` (значение по умолчанию после Phase 0).
+Отдельный Postgres **не нужен**. `STORE=memory` по умолчанию.
 
-Данные сбросятся при рестарте процесса — для ранних этапов это ожидаемо.
+Чтобы **agent** и **ctl** видели одно состояние, используется общий JSON-файл (`MEMORY_STORE_PATH`, по умолчанию `.mvp-manager/store.json`). Без общего пути CLI и демон не разделяют bots/runtimes.
 
-**После Phase 0 (0.1–0.4):** модуль `mvp-manager`, конфиг из ENV, порт `internal/store` + реализация `internal/store/memory`, wiring `STORE=memory` в `agent`/`ctl`. Образец ENV — [`.env.example`](../.env.example). Команды и таблица ENV — в корневом [`README.md`](../README.md).
+**После Phase 1:** supervisor + reconcile для `custom_bot`, CLI `ctl bots*` / `runtimes list`, `examples/fake-bot`, E2E `scripts/e2e-phase1.sh`. Образец ENV — [`.env.example`](../.env.example). Полные команды — корневой [`README.md`](../README.md).
 
 ```bash
 go build -o bin/agent ./cmd/agent
 go build -o bin/ctl ./cmd/ctl
-export NODE_ID=node-1 STORE=memory
-./bin/agent          # slog: store=memory, регистрация ноды; ждёт SIGINT/SIGTERM
-# Ctrl+C или: kill -TERM <pid>  → тихий выход
-go test ./internal/config/... ./internal/store/...
+go build -o bin/fake-bot ./examples/fake-bot
+export NODE_ID=node-1 STORE=memory MEMORY_STORE_PATH=.mvp-manager/store.json
+./bin/agent          # heartbeat + reconcile custom; ждёт SIGINT/SIGTERM
+# в другом терминале — тот же MEMORY_STORE_PATH:
+./bin/ctl bots create --name demo --custom-name demo --port 18080 \
+  --token test --mode webhook --start-command "$(pwd)/bin/fake-bot"
+./bin/ctl bots start <bot-id>
+./scripts/e2e-phase1.sh
+go test ./internal/config/... ./internal/store/... ./internal/supervisor/... ./internal/reconcile/...
 ```
 
-`STORE=postgres` пока отклоняется с понятной ошибкой (Phase PG), без dial БД. Reconcile / supervisor / `ctl bots*` — Phase 1.
+`STORE=postgres` пока отклоняется с понятной ошибкой (Phase PG), без dial БД. Multi-tenant runner / healthcheck — Phase 2.
 
 ### Позже (PostgreSQL) — Phase PG
 
@@ -82,15 +87,15 @@ Go-модуль: **`mvp-manager`**. `bot-runner` — в этом же репоз
 ```
 
 ```text
-/manager Phase 0 целиком (0.1–0.4, in-memory store), потом отчёт как проверить
+/manager Phase 1 целиком (custom + supervisor + ctl)
 ```
 
 ```text
-/manager Только порт store + memory: Phase 0.3 и 0.4
+/manager Только Phase 1.2 (supervisor процессов)
 ```
 
 ```text
-/manager Пользователь принял Phase 0 — отметь «Принято вами» и обнови сводку
+/manager Пользователь принял Phase 1 — отметь «Принято вами» и обнови сводку
 ```
 
 ### Способ 2 — без слэша

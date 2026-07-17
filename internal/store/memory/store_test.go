@@ -260,7 +260,7 @@ func TestConcurrentSafetySmoke(t *testing.T) {
 			for j := 0; j < perWorker; j++ {
 				port := 10000 + i*perWorker + j
 				_, err := s.Bots.Create(ctx, store.Bot{
-					Name: fmt.Sprintf("bot-%d-%d", i, j),
+					Name:    fmt.Sprintf("bot-%d-%d", i, j),
 					BotType: store.BotTypeDefault, Channel: store.BotChannelTelegram,
 					RunMode: store.BotRunModeWebhook, Port: port, TokenRef: "t",
 				})

@@ -2,7 +2,7 @@
 
 Менеджер runtime ботов на ноде (Go): демон `agent` сверки desired/actual и CLI `ctl`.
 
-На ранних этапах (Phase 0–2) хранилище — **in-memory** (`STORE=memory`). Данные сбрасываются при рестарте процесса. PostgreSQL появится позже (Phase PG).
+На Phase 1 хранилище — **memory** с общим JSON-файлом (`MEMORY_STORE_PATH`), чтобы `agent` и `ctl` видели одно состояние. PostgreSQL появится позже (Phase PG).
 
 Подробности ТЗ, плана и процесса работы с агентами — в [`docs/`](./docs/) ([TZ](./docs/TZ.md), [план](./docs/IMPLEMENTATION_PLAN.md), [как работать](./docs/Readme.md)).
 
@@ -11,12 +11,13 @@
 ```bash
 go build -o bin/agent ./cmd/agent
 go build -o bin/ctl ./cmd/ctl
+go build -o bin/fake-bot ./examples/fake-bot
 ```
 
-Или одной командой:
+Или:
 
 ```bash
-go build ./cmd/agent ./cmd/ctl
+go build ./cmd/agent ./cmd/ctl ./examples/fake-bot
 ```
 
 ## Конфигурация (ENV)
@@ -27,61 +28,70 @@ go build ./cmd/agent ./cmd/ctl
 |---|---|---|---|
 | `NODE_ID` | да | — | Идентификатор ноды |
 | `STORE` | нет | `memory` | `memory` или `postgres` (БД — Phase PG) |
-| `DATABASE_URL` | нет | — | DSN для Postgres (позже; сейчас не используется) |
+| `MEMORY_STORE_PATH` | нет* | `.mvp-manager/store.json` | Общий JSON для agent↔ctl; `""` = только RAM |
+| `RECONCILE_INTERVAL` | нет | `3s` | Период reconcile в agent |
+| `HEARTBEAT_INTERVAL` | нет | `5s` | Период heartbeat ноды |
+| `SHUTDOWN_GRACE` | нет | `10s` | SIGTERM→SIGKILL для дочерних процессов |
+| `PUBLIC_URL` | нет | — | Опционально в launch ENV бота |
+| `DATABASE_URL` | нет | — | DSN Postgres (Phase PG) |
 
-Задать в shell:
+\* если переменная **не задана** — дефолтный файл; если задана пустой — persistence выключена.
 
 ```bash
 export NODE_ID=node-1
 export STORE=memory
-# или из файла: set -a && source .env && set +a
+export MEMORY_STORE_PATH=.mvp-manager/store.json
+# или: set -a && source .env && set +a
 ```
 
-Неизвестный `STORE` (например `redis`) даёт понятную ошибку при `config.Load()` / запуске.  
-`STORE=postgres` пока даёт ошибку «не реализован (Phase PG)» — без подключения к БД.
+## Phase 1: agent + ctl + fake-bot
 
-## Запуск agent (memory)
+`agent` регистрирует ноду, крутит heartbeat и reconcile для `kind=custom_bot`, стартует/останавливает процессы через supervisor (process group, SIGTERM→grace→SIGKILL).
 
-`agent` загружает ENV, создаёт in-memory store, регистрирует ноду (`Upsert` по `NODE_ID`) и ждёт сигнал завершения. Reconcile / supervisor процессов — Phase 1.
+`ctl` пишет desired-состояние в тот же store-файл.
 
 ```bash
 export NODE_ID=node-1
 export STORE=memory
+export MEMORY_STORE_PATH=.mvp-manager/store.json
+export RECONCILE_INTERVAL=1s
+
+# терминал 1
 go run ./cmd/agent
-```
 
-В логе ожидается `store=memory` и сообщение о регистрации ноды. Процесс живёт до сигнала:
+# терминал 2
+go build -o bin/fake-bot ./examples/fake-bot
+go run ./cmd/ctl bots create \
+  --name demo \
+  --custom-name demo \
+  --port 18080 \
+  --token test-token \
+  --mode webhook \
+  --start-command "$(pwd)/bin/fake-bot"
 
-```bash
-# в другом терминале — тихий выход (exit 0):
-kill -TERM <pid>   # или Ctrl+C (SIGINT) в терминале agent
+go run ./cmd/ctl bots start <bot-id>
+go run ./cmd/ctl bots list
+go run ./cmd/ctl runtimes list
+curl -s http://127.0.0.1:18080/healthz
+
+go run ./cmd/ctl bots stop <bot-id>
 ```
 
 Help/version не требуют `NODE_ID`:
 
 ```bash
 go run ./cmd/agent --help
-go run ./cmd/agent --version
-```
-
-## Запуск ctl
-
-`ctl` при обычном запуске тоже читает конфиг и создаёт memory store (подтверждение в логе). Подкоманды `bots*` — Phase 1.
-
-```bash
-NODE_ID=node-1 STORE=memory go run ./cmd/ctl
 go run ./cmd/ctl --help
-go run ./cmd/ctl --version
 ```
 
-После сборки:
+## E2E-скрипт
 
 ```bash
-NODE_ID=node-1 ./bin/agent
-./bin/agent --help
-NODE_ID=node-1 ./bin/ctl
-./bin/ctl --version
+chmod +x scripts/e2e-phase1.sh
+./scripts/e2e-phase1.sh
 ```
+
+Скрипт: create → start → healthz → stop; затем краш ребёнка → `actual=failed`, agent жив.
 
 ## Тесты
 
@@ -89,4 +99,6 @@ NODE_ID=node-1 ./bin/ctl
 go test ./internal/config/...
 go test ./internal/store/...
 go test ./internal/store/memory/...
+go test ./internal/supervisor/...
+go test ./internal/reconcile/...
 ```

@@ -32,7 +32,7 @@
 | Фаза | Название | Статус |
 |---|---|---|
 | 0 | Каркас + in-memory store | ✅ принята |
-| 1 | Custom-бот + supervisor + ctl | ⏳ не начата |
+| 1 | Custom-бот + supervisor + ctl | ✅ принята |
 | 2 | Multi-tenant runner + healthcheck | ⏳ не начата |
 | PG | PostgreSQL (адаптер store) | ⏳ не начата |
 | 3 | Типы, lease, migrate, API | ⏳ не начата |
@@ -101,58 +101,58 @@
 
 **Зачем:** один custom-процесс стартует и останавливается по записям в **store** (пока memory).
 
-**Статус фазы:** ⏳ не начата  
+**Статус фазы:** ✅ принята  
 **Старт только после:** Phase 0 → ✅ принята
 
 ### 1.1. Доменные типы
 
-- [ ] Структуры Runtime / Bot в `internal/…`
-- [ ] Маппинг полей store ↔ Go
+- [x] Структуры Runtime / Bot в `internal/…`
+- [x] Маппинг полей store ↔ Go
 
 ### 1.2. Supervisor процессов
 
-- [ ] `Start` / `Stop` / учёт PID
-- [ ] Ожидание выхода (`Wait`) в фоне
-- [ ] Process group; SIGTERM → ожидание → SIGKILL
-- [ ] Подробные комментарии жизненного цикла (на русском)
+- [x] `Start` / `Stop` / учёт PID
+- [x] Ожидание выхода (`Wait`) в фоне
+- [x] Process group; SIGTERM → ожидание → SIGKILL
+- [x] Подробные комментарии жизненного цикла (на русском)
 
 **Проверка:** автотест: start → процесс жив → stop → процесса нет
 
 ### 1.3. Reconcile для custom
 
-- [ ] Цикл сверки desired ↔ actual для `kind=custom_bot`
-- [ ] Запись в store: `pid`, `actual_state`, `last_error`, `exit_code`
-- [ ] Heartbeat ноды в store
-- [ ] Полноценный lease пока не обязателен (поля модели уже заложены)
+- [x] Цикл сверки desired ↔ actual для `kind=custom_bot`
+- [x] Запись в store: `pid`, `actual_state`, `last_error`, `exit_code`
+- [x] Heartbeat ноды в store
+- [x] Полноценный lease пока не обязателен (поля модели уже заложены)
 
 **Проверка:** смена `desired_state` через `ctl`/store → процесс появляется/исчезает за интервал reconcile
 
 ### 1.4. CLI `ctl`
 
-- [ ] `bots create` (custom + runtime, проверка уникальности порта)
-- [ ] `bots start` / `bots stop`
-- [ ] `bots list`
-- [ ] `runtimes list`
-- [ ] Токен в MVP — простое поле/ENV (без vault)
+- [x] `bots create` (custom + runtime, проверка уникальности порта)
+- [x] `bots start` / `bots stop`
+- [x] `bots list`
+- [x] `runtimes list`
+- [x] Токен в MVP — простое поле/ENV (без vault)
 
 **Проверка:** create → start → list (running) → stop
 
 ### 1.5. Заглушка custom-бота (fake-bot)
 
-- [ ] Пример бинарника (`examples/fake-bot` или `testdata/…`)
-- [ ] Читает `PORT`, `BOT_MODE`, …
-- [ ] Webhook: отвечает на `/healthz`
-- [ ] Polling: просто живёт до SIGTERM
-- [ ] Короткий E2E-сценарий/скрипт с `ctl`
+- [x] Пример бинарника (`examples/fake-bot` или `testdata/…`)
+- [x] Читает `PORT`, `BOT_MODE`, …
+- [x] Webhook: отвечает на `/healthz`
+- [x] Polling: просто живёт до SIGTERM
+- [x] Короткий E2E-сценарий/скрипт с `ctl`
 
 **Проверка:** полный прогон ctl + fake-bot на локальной машине
 
 ### Закрытие Phase 1
 
-- [ ] Custom управляется из store / `ctl`
-- [ ] Краш дочернего процесса → `actual_state=failed`, агент жив
-- [ ] `control-api` сознательно **не** делаем в этой фазе
-- [ ] **Принято вами**
+- [x] Custom управляется из store / `ctl`
+- [x] Краш дочернего процесса → `actual_state=failed`, агент жив
+- [x] `control-api` сознательно **не** делаем в этой фазе
+- [x] **Принято вами** (2026-07-17)
 
 ---
 

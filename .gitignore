@@ -47,3 +47,4 @@ temp/
 # Docker volumes / local data (if ever mounted here)
 postgres-data/
 .data/
+.mvp-manager/
