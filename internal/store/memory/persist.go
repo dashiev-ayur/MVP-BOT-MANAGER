@@ -14,9 +14,10 @@ import (
 // snapshot — сериализуемый снимок всего store для file-backed режима.
 // Индексы byRuntimeName/byPort на диске не храним: восстанавливаем при load.
 type snapshot struct {
-	Nodes    []store.Node    `json:"nodes"`
-	Runtimes []store.Runtime `json:"runtimes"`
-	Bots     []store.Bot     `json:"bots"`
+	Nodes    []store.Node     `json:"nodes"`
+	Runtimes []store.Runtime  `json:"runtimes"`
+	Bots     []store.Bot      `json:"bots"`
+	Events   []store.BotEvent `json:"events,omitempty"`
 }
 
 // withDiskLocked выполняет fn под flock файла store.
@@ -66,7 +67,7 @@ func (s *shared) loadFromFileLocked(f *os.File) error {
 		return fmt.Errorf("memory store read %s: %w", s.path, err)
 	}
 	if len(data) == 0 {
-		s.replaceMaps(nil, nil, nil)
+		s.replaceMaps(nil, nil, nil, nil)
 		return nil
 	}
 
@@ -74,7 +75,7 @@ func (s *shared) loadFromFileLocked(f *os.File) error {
 	if err := json.Unmarshal(data, &snap); err != nil {
 		return fmt.Errorf("memory store decode %s: %w", s.path, err)
 	}
-	s.replaceMaps(snap.Nodes, snap.Runtimes, snap.Bots)
+	s.replaceMaps(snap.Nodes, snap.Runtimes, snap.Bots, snap.Events)
 	return nil
 }
 
@@ -85,6 +86,7 @@ func (s *shared) saveToFileLocked(f *os.File) error {
 		Nodes:    make([]store.Node, 0, len(s.nodes)),
 		Runtimes: make([]store.Runtime, 0, len(s.runtimes)),
 		Bots:     make([]store.Bot, 0, len(s.bots)),
+		Events:   make([]store.BotEvent, 0, len(s.events)),
 	}
 	for _, n := range s.nodes {
 		snap.Nodes = append(snap.Nodes, cloneNode(n))
@@ -94,6 +96,9 @@ func (s *shared) saveToFileLocked(f *os.File) error {
 	}
 	for _, b := range s.bots {
 		snap.Bots = append(snap.Bots, cloneBot(b))
+	}
+	for _, ev := range s.events {
+		snap.Events = append(snap.Events, cloneEvent(ev))
 	}
 
 	data, err := json.MarshalIndent(snap, "", "  ")
@@ -118,10 +123,11 @@ func (s *shared) saveToFileLocked(f *os.File) error {
 }
 
 // replaceMaps полностью подменяет внутренние maps и индексы UNIQUE.
-func (s *shared) replaceMaps(nodes []store.Node, runtimes []store.Runtime, bots []store.Bot) {
+func (s *shared) replaceMaps(nodes []store.Node, runtimes []store.Runtime, bots []store.Bot, events []store.BotEvent) {
 	s.nodes = make(map[string]store.Node, len(nodes))
 	s.runtimes = make(map[string]store.Runtime, len(runtimes))
 	s.bots = make(map[string]store.Bot, len(bots))
+	s.events = make([]store.BotEvent, 0, len(events))
 	s.byRuntimeName = make(map[string]string, len(runtimes))
 	s.byPort = make(map[int]string, len(bots))
 
@@ -137,5 +143,8 @@ func (s *shared) replaceMaps(nodes []store.Node, runtimes []store.Runtime, bots 
 		stored := cloneBot(b)
 		s.bots[stored.ID] = stored
 		s.byPort[stored.Port] = stored.ID
+	}
+	for _, ev := range events {
+		s.events = append(s.events, cloneEvent(ev))
 	}
 }

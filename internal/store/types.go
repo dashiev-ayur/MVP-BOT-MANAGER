@@ -180,3 +180,17 @@ type BotActualPatch struct {
 	ActualState ActualState
 	LastError   *string
 }
+
+// ---------------------------------------------------------------------------
+// Аудит событий бота (control-api GET /v1/bots/{id}/events)
+// ---------------------------------------------------------------------------
+
+// BotEvent — запись аудита (start/stop/migrate и т.п.).
+type BotEvent struct {
+	ID      string
+	BotID   string
+	Type    string // например "started", "stopped", "migrated"
+	Message string
+	At      time.Time
+	Meta    map[string]any // опциональные детали; nil = пустой
+}

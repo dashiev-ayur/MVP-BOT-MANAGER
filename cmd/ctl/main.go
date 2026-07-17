@@ -16,6 +16,7 @@ import (
 
 	"mvp-manager/internal/config"
 	"mvp-manager/internal/launch"
+	"mvp-manager/internal/ops"
 	"mvp-manager/internal/store"
 	"mvp-manager/internal/store/memory"
 	"mvp-manager/internal/storeopen"
@@ -37,6 +38,7 @@ const helpText = `mvp-manager ctl — CLI управления ботами (о�
       [--mode webhook|polling] [--channel telegram|max]
   ctl bots start <bot-id>
   ctl bots stop <bot-id>
+  ctl bots migrate <bot-id> --to-node <node-id>
   ctl bots list
   ctl runtimes list
   ctl runtimes start <runtime-id>
@@ -102,7 +104,7 @@ func main() {
 
 func cmdBots(ctx context.Context, cfg config.Config, st *memory.Store, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("нужна подкоманда: create|start|stop|list")
+		return fmt.Errorf("нужна подкоманда: create|start|stop|migrate|list")
 	}
 	switch args[0] {
 	case "create":
@@ -117,10 +119,21 @@ func cmdBots(ctx context.Context, cfg config.Config, st *memory.Store, args []st
 			return fmt.Errorf("usage: ctl bots stop <bot-id>")
 		}
 		return botsStop(ctx, st, args[1])
+	case "migrate":
+		return botsMigrate(ctx, cfg, st, args[1:])
 	case "list":
 		return botsList(ctx, st)
 	default:
 		return fmt.Errorf("неизвестная подкоманда bots %q", args[0])
+	}
+}
+
+func opsRepos(st *memory.Store) ops.Repos {
+	return ops.Repos{
+		Nodes:    st.Nodes,
+		Runtimes: st.Runtimes,
+		Bots:     st.Bots,
+		Events:   st.Events,
 	}
 }
 
@@ -370,98 +383,59 @@ func channelModePort(fs map[string]string) (channel, mode string, port int, err 
 }
 
 func botsStart(ctx context.Context, st *memory.Store, botID string) error {
-	bot, err := st.Bots.ByID(ctx, botID)
-	if err != nil {
+	if err := ops.Start(ctx, opsRepos(st), botID); err != nil {
 		return err
 	}
-	if bot.RuntimeID == nil {
-		return fmt.Errorf("bot %s: нет runtime_id", botID)
+	bot, _ := st.Bots.ByID(ctx, botID)
+	rtID := ""
+	if bot.RuntimeID != nil {
+		rtID = *bot.RuntimeID
 	}
-	rtID := *bot.RuntimeID
-
-	if err := st.Bots.UpdateDesiredState(ctx, botID, store.DesiredRunning); err != nil {
-		return err
-	}
-	if err := st.Runtimes.UpdateDesiredState(ctx, rtID, store.DesiredRunning); err != nil {
-		return err
-	}
-
-	rt, err := st.Runtimes.ByID(ctx, rtID)
-	if err != nil {
-		return err
-	}
-	// Для custom — сброс failed как в Phase 1.
-	// Для bot_runner — тоже, чтобы reconcile снова поднял процесс.
-	if rt.ActualState == store.ActualFailed || rt.ActualState == store.ActualStopped {
-		_ = st.Runtimes.UpdateActual(ctx, rtID, store.RuntimeActualPatch{
-			ActualState: store.ActualUnknown,
-		})
-	}
-	if bot.ActualState == store.ActualFailed || bot.ActualState == store.ActualStopped {
-		_ = st.Bots.UpdateActual(ctx, botID, store.BotActualPatch{
-			ActualState: store.ActualUnknown,
-		})
-	}
-
 	fmt.Printf("desired=running bot_id=%s runtime_id=%s\n", botID, rtID)
 	return nil
 }
 
 func botsStop(ctx context.Context, st *memory.Store, botID string) error {
-	bot, err := st.Bots.ByID(ctx, botID)
-	if err != nil {
+	if err := ops.Stop(ctx, opsRepos(st), botID); err != nil {
 		return err
 	}
-	if bot.RuntimeID == nil {
-		return fmt.Errorf("bot %s: нет runtime_id", botID)
+	bot, _ := st.Bots.ByID(ctx, botID)
+	rtID := ""
+	if bot.RuntimeID != nil {
+		rtID = *bot.RuntimeID
 	}
-	rtID := *bot.RuntimeID
-
-	if err := st.Bots.UpdateDesiredState(ctx, botID, store.DesiredStopped); err != nil {
-		return err
-	}
-
-	rt, err := st.Runtimes.ByID(ctx, rtID)
-	if err != nil {
-		return err
-	}
-
-	// custom 1:1 — стопаем runtime вместе с ботом.
-	// bot_runner — стопаем runtime только если больше нет desired=running default*.
-	if rt.Kind == store.RuntimeKindCustomBot {
-		if err := st.Runtimes.UpdateDesiredState(ctx, rtID, store.DesiredStopped); err != nil {
-			return err
-		}
-	} else if rt.Kind == store.RuntimeKindBotRunner {
-		still, err := anyDefaultRunning(ctx, st, rtID, botID)
-		if err != nil {
-			return err
-		}
-		if !still {
-			if err := st.Runtimes.UpdateDesiredState(ctx, rtID, store.DesiredStopped); err != nil {
-				return err
-			}
-		}
-	}
-
 	fmt.Printf("desired=stopped bot_id=%s runtime_id=%s\n", botID, rtID)
 	return nil
 }
 
-func anyDefaultRunning(ctx context.Context, st *memory.Store, runtimeID, exceptBotID string) (bool, error) {
-	bots, err := st.Bots.ListByRuntime(ctx, runtimeID)
-	if err != nil {
-		return false, err
+func botsMigrate(ctx context.Context, cfg config.Config, st *memory.Store, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: ctl bots migrate <bot-id> --to-node <node-id>")
 	}
-	for _, b := range bots {
-		if b.ID == exceptBotID {
+	botID := args[0]
+	toNode := ""
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		if a == "--to-node" || a == "--to" {
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s требует значение", a)
+			}
+			i++
+			toNode = args[i]
 			continue
 		}
-		if launch.IsDefaultType(b.BotType) && b.DesiredState == store.DesiredRunning {
-			return true, nil
-		}
+		return fmt.Errorf("неожиданный аргумент %q", a)
 	}
-	return false, nil
+	if toNode == "" {
+		return fmt.Errorf("--to-node обязателен")
+	}
+
+	opt := ops.MigrateOptsFromConfig(cfg, toNode)
+	if err := ops.Migrate(ctx, opsRepos(st), botID, opt); err != nil {
+		return err
+	}
+	fmt.Printf("migrated bot_id=%s to_node=%s\n", botID, toNode)
+	return nil
 }
 
 func runtimeSetDesired(ctx context.Context, st *memory.Store, runtimeID string, desired store.DesiredState) error {

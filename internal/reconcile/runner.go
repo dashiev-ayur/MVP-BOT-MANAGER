@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"mvp-manager/internal/launch"
+	"mvp-manager/internal/lease"
 	"mvp-manager/internal/store"
 	"mvp-manager/internal/supervisor"
 )
@@ -233,6 +234,39 @@ func (l *Loop) restartBotRunner(ctx context.Context, rt store.Runtime) error {
 }
 
 func (l *Loop) ensureBotRunnerRunning(ctx context.Context, rt store.Runtime, snap supervisor.Snapshot, tracked, running bool) error {
+	// Lease: старт bot_runner только при успешном захвате текущим NODE_ID.
+	if l.Lease != nil {
+		holds, err := l.Lease.Holds(ctx, rt.ID)
+		if err != nil {
+			return err
+		}
+		if !holds {
+			if err := l.Lease.Acquire(ctx, rt.ID); err != nil {
+				if lease.IsHeld(err) {
+					if running {
+						l.log.Warn("bot_runner lease lost → stop", "runtime_id", rt.ID)
+						_ = l.Supervisor.Stop(ctx, rt.ID)
+						l.Supervisor.Forget(rt.ID)
+						_ = l.Runtimes.UpdateActual(ctx, rt.ID, store.RuntimeActualPatch{
+							ActualState: store.ActualStopped,
+							PID:         nil,
+						})
+					}
+					return nil
+				}
+				return err
+			}
+		} else if running {
+			if err := l.Lease.Renew(ctx, rt.ID); err != nil {
+				l.log.Warn("bot_runner lease renew failed", "runtime_id", rt.ID, "err", err)
+				_ = l.Supervisor.Stop(ctx, rt.ID)
+				l.Supervisor.Forget(rt.ID)
+				_ = l.Lease.Release(ctx, rt.ID)
+				return err
+			}
+		}
+	}
+
 	if tracked && !running {
 		msg := "bot_runner exited unexpectedly"
 		if snap.WaitErr != nil {
@@ -321,6 +355,9 @@ func (l *Loop) startBotRunnerProcess(ctx context.Context, rt store.Runtime) erro
 			ActualState: store.ActualFailed,
 			LastError:   &msg,
 		})
+		if l.Lease != nil {
+			_ = l.Lease.Release(ctx, rt.ID)
+		}
 		return fmt.Errorf("start bot_runner %s: %w", rt.ID, err)
 	}
 
@@ -387,5 +424,8 @@ func (l *Loop) ensureBotRunnerStopped(ctx context.Context, rt store.Runtime, sna
 		})
 	}
 	l.Supervisor.Forget(rt.ID)
+	if l.Lease != nil {
+		_ = l.Lease.Release(ctx, rt.ID)
+	}
 	return nil
 }

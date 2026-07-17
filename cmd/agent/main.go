@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"mvp-manager/internal/config"
+	"mvp-manager/internal/lease"
 	"mvp-manager/internal/reconcile"
 	"mvp-manager/internal/store"
 	"mvp-manager/internal/storeopen"
@@ -35,7 +36,7 @@ const helpText = `mvp-manager agent — демон управления бота
 
 ENV: NODE_ID (обяз.), STORE=memory, MEMORY_STORE_PATH (общий JSON с ctl/runner/healthcheck),
 BOT_RUNNER_COMMAND, BOT_RUNNER_WORKDIR (опц.), BOT_RUNNER_HEALTH_PORT (опц.),
-RECONCILE_INTERVAL, HEARTBEAT_INTERVAL, SHUTDOWN_GRACE, PUBLIC_URL.
+LEASE_TTL (дефолт 15s), RECONCILE_INTERVAL, HEARTBEAT_INTERVAL, SHUTDOWN_GRACE, PUBLIC_URL.
 См. .env.example и README.
 `
 
@@ -70,6 +71,7 @@ func main() {
 		"store", storeKind,
 		"memory_store_path", cfg.MemoryStorePath,
 		"bot_runner_command", cfg.BotRunnerCommand,
+		"lease_ttl", cfg.LeaseTTL.String(),
 		"reconcile_interval", cfg.ReconcileInterval.String(),
 		"heartbeat_interval", cfg.HeartbeatInterval.String(),
 		"shutdown_grace", cfg.ShutdownGrace.String(),
@@ -103,6 +105,7 @@ func main() {
 	loop.BotRunnerHealthPort = cfg.BotRunnerHealthPort
 	loop.StoreKind = storeKind
 	loop.MemoryStorePath = cfg.MemoryStorePath
+	loop.Lease = lease.New(cfg.NodeID, cfg.LeaseTTL, st.Runtimes)
 
 	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

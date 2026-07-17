@@ -20,31 +20,30 @@
 
 | Этап | Реализация | Персистентность |
 |---|---|---|
-| Сейчас (Phase 0–2) | **In-memory** (`STORE=memory` + файл) | Пока живы процессы; общий JSON |
+| Сейчас (Phase 0–3) | **In-memory** (`STORE=memory` + файл) | Пока живы процессы; общий JSON |
 | Позже (Phase PG) | **PostgreSQL** (`STORE=postgres`) | На диске / общий сервер |
 
 Переключение — конфигом, без переписывания бизнес-логики.
 
-### Сейчас (in-memory, Phase 2)
+### Сейчас (in-memory, Phase 3)
 
 Отдельный Postgres **не нужен**. `STORE=memory` по умолчанию.
 
-Общий JSON (`MEMORY_STORE_PATH`, по умолчанию `.mvp-manager/store.json`) обязателен для **agent**, **ctl**, **bot-runner** и **healthcheck**. Без одного пути процессы не разделяют bots/runtimes.
+Общий JSON (`MEMORY_STORE_PATH`) обязателен для **agent**, **ctl**, **bot-runner**, **healthcheck** и **control-api**. Для migrate E2E — два агента с разными `NODE_ID` и одним файлом store.
 
-**После Phase 2 (2.1–2.4 + 2.5):** multi-tenant `bot-runner`, `healthcheck`, custom Phase 1; сценарий `default` отвечает на `/start` в **Telegram** (polling / webhook) и **Max**; `token_ref` резолвится из значения или ENV (`env:NAME` / `$NAME`). Образец ENV — [`.env.example`](../.env.example). Полные команды и live-проверка Telegram — корневой [`README.md`](../README.md), `scripts/manual-telegram-start.sh`.
+**После Phase 3:** сценарии `default` / `default_extended` (registry); lease на runtime; `ctl bots migrate` / API migrate; HTTP `control-api` (Bearer); handoff single-bot — [`docs/handoff/`](./handoff/). Образец ENV — [`.env.example`](../.env.example). Команды — корневой [`README.md`](../README.md).
 
 ```bash
-go build -o bin/agent ./cmd/agent
-go build -o bin/ctl ./cmd/ctl
-go build -o bin/bot-runner ./cmd/bot-runner
-go build -o bin/healthcheck ./cmd/healthcheck
+go build ./cmd/...
 export NODE_ID=node-1 STORE=memory MEMORY_STORE_PATH=.mvp-manager/store.json
 export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
-./scripts/e2e-phase2.sh
-./scripts/e2e-phase1.sh
-go test ./internal/messenger/... ./internal/launch/... ./internal/runner/...
-# live Telegram (нужен токен бота):
-# TELEGRAM_BOT_TOKEN=... ./scripts/manual-telegram-start.sh
+export CONTROL_API_TOKEN=dev-secret
+./scripts/e2e-phase3.sh
+./scripts/e2e-phase1.sh && ./scripts/e2e-phase2.sh
+# control-api:
+# API_ADDR=127.0.0.1:8080 ./bin/control-api
+# curl -s -H "Authorization: Bearer $CONTROL_API_TOKEN" http://127.0.0.1:8080/v1/bots
+go test ./internal/lease/... ./internal/api/... ./internal/ops/...
 ```
 
 `STORE=postgres` пока отклоняется с понятной ошибкой (Phase PG), без dial БД.
@@ -87,11 +86,11 @@ Go-модуль: **`mvp-manager`**. `bot-runner` — в этом же репоз
 ```
 
 ```text
-/manager Phase 2.5 (Telegram + Max для default)
+/manager Phase 3 целиком (lease, migrate, control-api)
 ```
 
 ```text
-/manager Пользователь принял Phase 2.5 — отметь «Принято вами»
+/manager Пользователь принял Phase 3 — отметь «Принято вами»
 ```
 
 ```text

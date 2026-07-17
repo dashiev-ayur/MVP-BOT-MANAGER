@@ -35,7 +35,7 @@
 | 1 | Custom-бот + supervisor + ctl | ✅ принята |
 | 2 | Multi-tenant runner + healthcheck | ✅ принята |
 | PG | PostgreSQL (адаптер store) | ⏳ не начата |
-| 3 | Типы, lease, migrate, API | ⏳ не начата |
+| 3 | Типы, lease, migrate, API | ✅ принята |
 | 4 | Укрепление (hardening) | ⏳ не начата |
 
 *Статусы фазы: `⏳ не начата` → `🚧 в работе` → `👀 ждёт вашей проверки` → `✅ принята`.*  
@@ -252,45 +252,45 @@
 
 **Зачем:** расширение сценариев и перенос между нодами (2–3 сервера).
 
-**Статус фазы:** ⏳ не начата  
+**Статус фазы:** ✅ принята  
 **Старт только после:** Phase 2 → ✅ принята (Phase PG желателен до multi-node migrate, для single-node можно позже)
 
 ### 3.1. Каталог вшитых типов
 
-- [ ] Сценарий `default_extended`
-- [ ] Узкий интерфейс регистрации сценариев (без монолитного switch «навсегда»)
+- [x] Сценарий `default_extended`
+- [x] Узкий интерфейс регистрации сценариев (без монолитного switch «навсегда»)
 
 ### 3.2. Lease на runtime
 
-- [ ] Acquire / renew / release
-- [ ] Старт процесса только при успешном lease
-- [ ] Проверка гонки: два агента с разными `NODE_ID` — второй не захватывает чужой runtime
+- [x] Acquire / renew / release
+- [x] Старт процесса только при успешном lease
+- [x] Проверка гонки: два агента с разными `NODE_ID` — второй не захватывает чужой runtime
 
 ### 3.3. Migrate бота между нодами
 
-- [ ] Протокол: stop/remove → wait → reassign → start/add
-- [ ] Путь для custom
-- [ ] Путь для default (через runner)
-- [ ] Команда `ctl bots migrate`
+- [x] Протокол: stop/remove → wait → reassign → start/add
+- [x] Путь для custom
+- [x] Путь для default (через runner)
+- [x] Команда `ctl bots migrate`
 
 **Проверка:** E2E на двух агентах (можно одна машина, два `NODE_ID`)
 
 ### 3.4. HTTP `control-api`
 
-- [ ] Отдельный `cmd/control-api`
-- [ ] Эндпоинты из ТЗ §11
-- [ ] Auth token; по умолчанию bind localhost
+- [x] Отдельный `cmd/control-api`
+- [x] Эндпоинты из ТЗ §11
+- [x] Auth token; по умолчанию bind localhost
 
 ### 3.5. Выдача бота клиенту (документы)
 
-- [ ] Описание handoff + `.env.example` для single-bot режима
-- [ ] `cmd/handoff` — по желанию здесь или в Phase 4
+- [x] Описание handoff + `.env.example` для single-bot режима
+- [x] `cmd/handoff` — по желанию здесь или в Phase 4 *(отложено в Phase 4)*
 
 ### Закрытие Phase 3
 
-- [ ] Migrate без двойного запуска
-- [ ] Lease работает
-- [ ] **Принято вами**
+- [x] Migrate без двойного запуска
+- [x] Lease работает
+- [x] **Принято вами** (2026-07-17)
 
 ---
 

@@ -60,6 +60,19 @@ type RuntimeRepository interface {
 	// UpdateLease обновляет lease_owner / lease_until.
 	// owner/until = nil означает сброс соответствующего поля в NULL.
 	UpdateLease(ctx context.Context, id string, owner *string, until *time.Time) error
+
+	// TryAcquireLease атомарно захватывает lease для owner до until.
+	// Успех, если lease свободен, истёк (lease_until < now) или уже принадлежит owner.
+	// Иначе ErrLeaseHeld. Нет runtime → ErrNotFound.
+	TryAcquireLease(ctx context.Context, id string, owner string, until time.Time) error
+
+	// RenewLease продлевает lease_until только если текущий lease_owner == owner
+	// и lease ещё не истёк (или уже наш). Иначе ErrLeaseHeld / ErrNotFound.
+	RenewLease(ctx context.Context, id string, owner string, until time.Time) error
+
+	// ReleaseLease сбрасывает lease, только если owner совпадает (или lease уже пуст/истёк).
+	// Чужой валидный lease → ErrLeaseHeld.
+	ReleaseLease(ctx context.Context, id string, owner string) error
 }
 
 // BotRepository — логические боты клиентов (ТЗ §6.3).
@@ -94,4 +107,15 @@ type BotRepository interface {
 
 	// Delete удаляет бота по id. Нет записи → ErrNotFound.
 	Delete(ctx context.Context, id string) error
+}
+
+// EventRepository — аудит действий над ботом (ТЗ §11 GET …/events).
+//
+// Потребители: ctl / control-api при start/stop/migrate; API для чтения.
+type EventRepository interface {
+	// Append добавляет событие. Пустой ID → генерируется UUID.
+	Append(ctx context.Context, ev BotEvent) (BotEvent, error)
+
+	// ListByBot возвращает события бота (порядок: от старых к новым).
+	ListByBot(ctx context.Context, botID string) ([]BotEvent, error)
 }

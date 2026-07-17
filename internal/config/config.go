@@ -26,10 +26,17 @@ const (
 	EnvRuntimeID           = "RUNTIME_ID"             // какой runtime обслуживает этот процесс runner
 
 	// Healthcheck (отдельный cmd; интервал независим от reconcile).
-	EnvCheckInterval     = "CHECK_INTERVAL"
-	EnvHTTPTimeout       = "HTTP_TIMEOUT"
-	EnvFailureThreshold  = "FAILURE_THRESHOLD"
+	EnvCheckInterval       = "CHECK_INTERVAL"
+	EnvHTTPTimeout         = "HTTP_TIMEOUT"
+	EnvFailureThreshold    = "FAILURE_THRESHOLD"
 	EnvHealthcheckAllNodes = "HEALTHCHECK_ALL_NODES" // true → опрос всех нод, иначе только NODE_ID
+
+	// Lease (Phase 3): TTL владения runtime перед Start/Renew.
+	EnvLeaseTTL = "LEASE_TTL"
+
+	// control-api (Phase 3).
+	EnvAPIAddr          = "API_ADDR"
+	EnvControlAPIToken  = "CONTROL_API_TOKEN"
 )
 
 // Допустимые значения STORE и значение по умолчанию.
@@ -49,6 +56,9 @@ const (
 	DefaultCheckInterval    = 10 * time.Second
 	DefaultHTTPTimeout      = 2 * time.Second
 	DefaultFailureThreshold = 3
+
+	DefaultLeaseTTL = 15 * time.Second
+	DefaultAPIAddr  = "127.0.0.1:8080"
 )
 
 // Config — снимок конфигурации процесса после чтения ENV.
@@ -97,6 +107,14 @@ type Config struct {
 	FailureThreshold int
 	// HealthcheckAllNodes — опрашивать webhook-ботов всех нод (по умолчанию только NODE_ID).
 	HealthcheckAllNodes bool
+
+	// LeaseTTL — сколько держать lease_until после Acquire/Renew (agent).
+	LeaseTTL time.Duration
+
+	// APIAddr — bind-адрес control-api (по умолчанию localhost).
+	APIAddr string
+	// ControlAPIToken — Bearer-токен для HTTP API; пустой → API отклоняет все запросы (401).
+	ControlAPIToken string
 }
 
 // Load читает конфигурацию из переменных окружения процесса.
@@ -168,6 +186,15 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	leaseTTL, err := durationFromEnv(EnvLeaseTTL, DefaultLeaseTTL)
+	if err != nil {
+		return Config{}, err
+	}
+
+	apiAddr := strings.TrimSpace(os.Getenv(EnvAPIAddr))
+	if apiAddr == "" {
+		apiAddr = DefaultAPIAddr
+	}
 
 	cfg := Config{
 		NodeID:              nodeID,
@@ -186,6 +213,9 @@ func Load() (Config, error) {
 		HTTPTimeout:         httpTimeout,
 		FailureThreshold:    failureThreshold,
 		HealthcheckAllNodes: boolFromEnv(EnvHealthcheckAllNodes),
+		LeaseTTL:            leaseTTL,
+		APIAddr:             apiAddr,
+		ControlAPIToken:     strings.TrimSpace(os.Getenv(EnvControlAPIToken)),
 	}
 	return cfg, nil
 }

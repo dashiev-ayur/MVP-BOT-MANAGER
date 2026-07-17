@@ -232,3 +232,96 @@ func (r *RuntimeRepo) UpdateLease(ctx context.Context, id string, owner *string,
 		return nil
 	})
 }
+
+// TryAcquireLease — атомарный захват (под flock в file-backed режиме).
+func (r *RuntimeRepo) TryAcquireLease(ctx context.Context, id string, owner string, until time.Time) error {
+	return r.s.doWrite(ctx, func() error {
+		rt, ok := r.s.runtimes[id]
+		if !ok {
+			return store.ErrNotFound
+		}
+		if !leaseAcquirable(rt, owner, now()) {
+			return store.ErrLeaseHeld
+		}
+		o := owner
+		u := until.UTC()
+		rt.LeaseOwner = &o
+		rt.LeaseUntil = &u
+		rt.UpdatedAt = now()
+		r.s.runtimes[id] = rt
+		return nil
+	})
+}
+
+// RenewLease продлевает until только для текущего владельца.
+func (r *RuntimeRepo) RenewLease(ctx context.Context, id string, owner string, until time.Time) error {
+	return r.s.doWrite(ctx, func() error {
+		rt, ok := r.s.runtimes[id]
+		if !ok {
+			return store.ErrNotFound
+		}
+		if !leaseOwnedBy(rt, owner, now()) {
+			return store.ErrLeaseHeld
+		}
+		u := until.UTC()
+		o := owner
+		rt.LeaseOwner = &o
+		rt.LeaseUntil = &u
+		rt.UpdatedAt = now()
+		r.s.runtimes[id] = rt
+		return nil
+	})
+}
+
+// ReleaseLease сбрасывает lease, если он наш (или уже свободен/истёк).
+func (r *RuntimeRepo) ReleaseLease(ctx context.Context, id string, owner string) error {
+	return r.s.doWrite(ctx, func() error {
+		rt, ok := r.s.runtimes[id]
+		if !ok {
+			return store.ErrNotFound
+		}
+		// Чужой валидный lease нельзя сбросить.
+		if leaseHeldByOther(rt, owner, now()) {
+			return store.ErrLeaseHeld
+		}
+		rt.LeaseOwner = nil
+		rt.LeaseUntil = nil
+		rt.UpdatedAt = now()
+		r.s.runtimes[id] = rt
+		return nil
+	})
+}
+
+// leaseAcquirable — свободен, истёк или уже наш.
+func leaseAcquirable(rt store.Runtime, owner string, now time.Time) bool {
+	if rt.LeaseOwner == nil || *rt.LeaseOwner == "" {
+		return true
+	}
+	if rt.LeaseUntil == nil || !rt.LeaseUntil.After(now) {
+		return true // истёк
+	}
+	return *rt.LeaseOwner == owner
+}
+
+// leaseOwnedBy — валидный lease принадлежит owner (для renew).
+func leaseOwnedBy(rt store.Runtime, owner string, now time.Time) bool {
+	if rt.LeaseOwner == nil || *rt.LeaseOwner != owner {
+		return false
+	}
+	// Истёкший «наш» lease можно продлить (как re-acquire).
+	if rt.LeaseUntil == nil || !rt.LeaseUntil.After(now) {
+		return true
+	}
+	return true
+}
+
+// leaseHeldByOther — валидный lease у другого узла.
+func leaseHeldByOther(rt store.Runtime, owner string, now time.Time) bool {
+	if rt.LeaseOwner == nil || *rt.LeaseOwner == "" {
+		return false
+	}
+	if rt.LeaseUntil == nil || !rt.LeaseUntil.After(now) {
+		return false
+	}
+	return *rt.LeaseOwner != owner
+}

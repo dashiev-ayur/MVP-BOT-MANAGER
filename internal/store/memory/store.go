@@ -13,7 +13,7 @@ import (
 //
 // В Go один тип не может реализовать Node/Runtime/Bot репозитории сразу:
 // методы ByID, List, Create, Update отличаются только типами возврата.
-// Поэтому три тонких адаптера (Nodes / Runtimes / Bots) делят общее
+// Поэтому тонкие адаптеры (Nodes / Runtimes / Bots / Events) делят общее
 // состояние shared и мьютекс — снаружи это один объект New()/Open().
 //
 // File-backed режим (Open): каждый вызов репозитория под flock перечитывает
@@ -23,6 +23,7 @@ type Store struct {
 	Nodes    *NodeRepo
 	Runtimes *RuntimeRepo
 	Bots     *BotRepo
+	Events   *EventRepo
 }
 
 // shared — внутренние maps и индексы UNIQUE под одним RWMutex.
@@ -35,6 +36,7 @@ type shared struct {
 	nodes    map[string]store.Node
 	runtimes map[string]store.Runtime
 	bots     map[string]store.Bot
+	events   []store.BotEvent // append-only аудит (порядок сохранения)
 
 	// byRuntimeName: name → runtime id (UNIQUE name, ТЗ §6.2).
 	byRuntimeName map[string]string
@@ -47,6 +49,7 @@ var (
 	_ store.NodeRepository    = (*NodeRepo)(nil)
 	_ store.RuntimeRepository = (*RuntimeRepo)(nil)
 	_ store.BotRepository     = (*BotRepo)(nil)
+	_ store.EventRepository   = (*EventRepo)(nil)
 )
 
 // NodeRepo реализует store.NodeRepository над общим shared.
@@ -86,6 +89,7 @@ func newStore(path string) *Store {
 		nodes:         make(map[string]store.Node),
 		runtimes:      make(map[string]store.Runtime),
 		bots:          make(map[string]store.Bot),
+		events:        nil,
 		byRuntimeName: make(map[string]string),
 		byPort:        make(map[int]string),
 	}
@@ -93,6 +97,7 @@ func newStore(path string) *Store {
 		Nodes:    &NodeRepo{s: sh},
 		Runtimes: &RuntimeRepo{s: sh},
 		Bots:     &BotRepo{s: sh},
+		Events:   &EventRepo{s: sh},
 	}
 }
 

@@ -11,8 +11,22 @@ import (
 
 	"mvp-manager/internal/launch"
 	"mvp-manager/internal/messenger"
+	"mvp-manager/internal/runner/scenarios"
 	"mvp-manager/internal/store"
 )
+
+// scenarioRegistry — каталог вшитых сценариев (default / default_extended).
+// Подменяется в тестах через SetScenarioRegistry; по умолчанию Builtin().
+var scenarioRegistry = scenarios.Builtin()
+
+// SetScenarioRegistry подменяет реестр сценариев (для тестов).
+func SetScenarioRegistry(r *scenarios.Registry) {
+	if r == nil {
+		scenarioRegistry = scenarios.Builtin()
+		return
+	}
+	scenarioRegistry = r
+}
 
 // instance — один логический бот внутри процесса runner.
 //
@@ -27,8 +41,9 @@ type instance struct {
 	// unhealthy — debug-флаг для E2E: POST /debug/unhealthy ломает /healthz.
 	unhealthy atomic.Bool
 
-	srv *http.Server
-	ch  messenger.Channel
+	srv     *http.Server
+	ch      messenger.Channel
+	handler scenarios.Handler // сценарий из registry (default / default_extended)
 }
 
 // fingerprint — что считать «конфигом инстанса» для reload.
@@ -61,13 +76,13 @@ func startInstance(parent context.Context, bot store.Bot, log *slog.Logger) (*in
 		done:   make(chan struct{}),
 	}
 
-	switch bot.BotType {
-	case store.BotTypeDefault, store.BotTypeDefaultExtended:
-		// default_extended на Phase 2.5 — тот же сценарий /start, что default.
-	default:
+	// Тип должен быть в реестре сценариев (явная Register, без вечного switch).
+	handler, err := scenarioRegistry.MustGet(bot.BotType)
+	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("unsupported bot_type %q in runner", bot.BotType)
+		return nil, err
 	}
+	inst.handler = handler
 
 	token, err := launch.ResolveTokenRef(bot.TokenRef)
 	if err != nil {
@@ -103,9 +118,12 @@ func startInstance(parent context.Context, bot store.Bot, log *slog.Logger) (*in
 	return inst, nil
 }
 
-// onIncoming — обработчик сценария default (ответ на /start).
+// onIncoming делегирует зарегистрированному сценарию (default / default_extended).
 func (inst *instance) onIncoming(ctx context.Context, in messenger.Incoming) error {
-	_, err := messenger.HandleDefaultStart(ctx, inst.ch, in)
+	if inst.handler == nil {
+		return fmt.Errorf("no scenario handler for bot %s", inst.bot.ID)
+	}
+	_, err := inst.handler.Handle(ctx, inst.ch, in)
 	return err
 }
 

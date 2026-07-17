@@ -17,4 +17,8 @@ var (
 	// ErrInvalidArgument — нарушен инвариант модели до записи
 	// (например custom_name обязателен только для bot_type=custom).
 	ErrInvalidArgument = errors.New("store: invalid argument")
+
+	// ErrLeaseHeld — runtime уже под валидным lease другого владельца
+	// (TryAcquireLease / RenewLease / ReleaseLease).
+	ErrLeaseHeld = errors.New("store: lease held by another owner")
 )

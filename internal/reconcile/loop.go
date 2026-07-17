@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"mvp-manager/internal/launch"
+	"mvp-manager/internal/lease"
 	"mvp-manager/internal/store"
 	"mvp-manager/internal/supervisor"
 )
@@ -25,6 +26,9 @@ type Loop struct {
 	Bots     store.BotRepository
 
 	Supervisor *supervisor.Supervisor
+
+	// Lease — захват runtime перед Start; nil → lease отключён (только тесты).
+	Lease *lease.Manager
 
 	ReconcileInterval time.Duration
 	HeartbeatInterval time.Duration
@@ -201,6 +205,42 @@ func (l *Loop) reconcileCustom(ctx context.Context, rt store.Runtime) error {
 }
 
 func (l *Loop) ensureRunning(ctx context.Context, rt store.Runtime, snap supervisor.Snapshot, tracked, running bool) error {
+	// Чужой валидный lease — не стартуем; если локальный процесс есть — гасим.
+	if l.Lease != nil {
+		holds, err := l.Lease.Holds(ctx, rt.ID)
+		if err != nil {
+			return err
+		}
+		if !holds {
+			// Попробуем захватить (свободен / истёк / наш после expire).
+			if err := l.Lease.Acquire(ctx, rt.ID); err != nil {
+				if lease.IsHeld(err) {
+					if running {
+						l.log.Warn("lease lost → stop local process", "runtime_id", rt.ID)
+						_ = l.Supervisor.Stop(ctx, rt.ID)
+						l.Supervisor.Forget(rt.ID)
+						_ = l.Runtimes.UpdateActual(ctx, rt.ID, store.RuntimeActualPatch{
+							ActualState: store.ActualStopped,
+							PID:         nil,
+						})
+						l.syncBotsActual(ctx, rt.ID, store.ActualStopped, nil)
+					}
+					return nil // чужой lease — тихо пропускаем
+				}
+				return err
+			}
+		} else if running {
+			// Уже держим и процесс жив — продлеваем TTL.
+			if err := l.Lease.Renew(ctx, rt.ID); err != nil {
+				l.log.Warn("lease renew failed → stop", "runtime_id", rt.ID, "err", err)
+				_ = l.Supervisor.Stop(ctx, rt.ID)
+				l.Supervisor.Forget(rt.ID)
+				_ = l.Lease.Release(ctx, rt.ID)
+				return err
+			}
+		}
+	}
+
 	// Процесс был на учёте и умер → failed (агент остаётся жив).
 	if tracked && !running {
 		msg := "process exited unexpectedly"
@@ -245,7 +285,7 @@ func (l *Loop) ensureRunning(ctx context.Context, rt store.Runtime, snap supervi
 		return nil
 	}
 
-	// Нет процесса — стартуем.
+	// Нет процесса — стартуем (lease уже Acquire выше, если включён).
 	if err := l.Runtimes.UpdateActual(ctx, rt.ID, store.RuntimeActualPatch{
 		ActualState: store.ActualStarting,
 		PID:         nil,
@@ -313,6 +353,9 @@ func (l *Loop) ensureRunning(ctx context.Context, rt store.Runtime, snap supervi
 			LastError:   &msg,
 		})
 		l.syncBotsActual(ctx, rt.ID, store.ActualFailed, &msg)
+		if l.Lease != nil {
+			_ = l.Lease.Release(ctx, rt.ID)
+		}
 		return fmt.Errorf("start runtime %s: %w", rt.ID, err)
 	}
 
@@ -370,6 +413,9 @@ func (l *Loop) ensureStopped(ctx context.Context, rt store.Runtime, snap supervi
 	}
 	l.syncBotsActual(ctx, rt.ID, store.ActualStopped, nil)
 	l.Supervisor.Forget(rt.ID)
+	if l.Lease != nil {
+		_ = l.Lease.Release(ctx, rt.ID)
+	}
 	return nil
 }
 
