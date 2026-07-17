@@ -148,9 +148,10 @@ func OpenForStore(storeKind, memoryPath string, log *slog.Logger) ChangeWatcher 
 		}
 		return NewFileWatcher(memoryPath, 300*time.Millisecond, log)
 	case "postgres":
-		// TODO(Phase PG): LISTEN/NOTIFY на канал изменений bots/runtimes.
+		// LISTEN/NOTIFY поднимает storeopen.OpenWatcher (pgx только там).
+		// Здесь оставляем Nop на случай прямого вызова без storeopen.
 		if log != nil {
-			log.Info("store change watcher: postgres LISTEN/NOTIFY — Phase PG (сейчас nop)")
+			log.Info("store change watcher: для postgres используйте storeopen.OpenWatcher")
 		}
 		return NewNop()
 	default:

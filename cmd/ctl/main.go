@@ -18,7 +18,6 @@ import (
 	"mvp-manager/internal/launch"
 	"mvp-manager/internal/ops"
 	"mvp-manager/internal/store"
-	"mvp-manager/internal/store/memory"
 	"mvp-manager/internal/storeopen"
 )
 
@@ -44,8 +43,8 @@ const helpText = `mvp-manager ctl — CLI управления ботами (о�
   ctl runtimes start <runtime-id>
   ctl runtimes stop <runtime-id>
 
-ENV (как у agent): NODE_ID, STORE=memory, MEMORY_STORE_PATH
-(по умолчанию .mvp-manager/store.json — общий файл с agent/runner/healthcheck).
+ENV (как у agent): NODE_ID, STORE=memory|postgres, MEMORY_STORE_PATH / DATABASE_URL
+(по умолчанию memory → .mvp-manager/store.json).
 
 Для default create нужен (или будет создан) runtime bot-runner-<NODE_ID>;
 команду запуска runner задаёт agent через BOT_RUNNER_COMMAND.
@@ -81,6 +80,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ctl: store: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() { _ = st.Close() }()
 
 	ctx := context.Background()
 	args := os.Args[1:]
@@ -102,7 +102,7 @@ func main() {
 	}
 }
 
-func cmdBots(ctx context.Context, cfg config.Config, st *memory.Store, args []string) error {
+func cmdBots(ctx context.Context, cfg config.Config, st store.Stores, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("нужна подкоманда: create|start|stop|migrate|list")
 	}
@@ -128,7 +128,7 @@ func cmdBots(ctx context.Context, cfg config.Config, st *memory.Store, args []st
 	}
 }
 
-func opsRepos(st *memory.Store) ops.Repos {
+func opsRepos(st store.Stores) ops.Repos {
 	return ops.Repos{
 		Nodes:    st.Nodes,
 		Runtimes: st.Runtimes,
@@ -137,7 +137,7 @@ func opsRepos(st *memory.Store) ops.Repos {
 	}
 }
 
-func cmdRuntimes(ctx context.Context, cfg config.Config, st *memory.Store, args []string) error {
+func cmdRuntimes(ctx context.Context, cfg config.Config, st store.Stores, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: ctl runtimes list|start|stop")
 	}
@@ -159,7 +159,7 @@ func cmdRuntimes(ctx context.Context, cfg config.Config, st *memory.Store, args 
 	}
 }
 
-func botsCreate(ctx context.Context, cfg config.Config, st *memory.Store, args []string) error {
+func botsCreate(ctx context.Context, cfg config.Config, st store.Stores, args []string) error {
 	fs := map[string]string{}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -197,7 +197,7 @@ func botsCreate(ctx context.Context, cfg config.Config, st *memory.Store, args [
 	}
 }
 
-func botsCreateCustom(ctx context.Context, cfg config.Config, st *memory.Store, fs map[string]string) error {
+func botsCreateCustom(ctx context.Context, cfg config.Config, st store.Stores, fs map[string]string) error {
 	name := fs["name"]
 	customName := fs["custom-name"]
 	startCmd := fs["start-command"]
@@ -270,7 +270,7 @@ func botsCreateCustom(ctx context.Context, cfg config.Config, st *memory.Store, 
 	return nil
 }
 
-func botsCreateDefault(ctx context.Context, cfg config.Config, st *memory.Store, fs map[string]string, botType store.BotType) error {
+func botsCreateDefault(ctx context.Context, cfg config.Config, st store.Stores, fs map[string]string, botType store.BotType) error {
 	name := fs["name"]
 	token := tokenFromFlags(fs)
 	channel, mode, port, err := channelModePort(fs)
@@ -322,7 +322,7 @@ func botsCreateDefault(ctx context.Context, cfg config.Config, st *memory.Store,
 // getOrCreateBotRunnerRuntime — runtime kind=bot_runner для NODE_ID.
 // StartCommand может быть пустым до первого старта agent (подставит из ENV);
 // если BOT_RUNNER_COMMAND задан в окружении ctl — записываем сразу.
-func getOrCreateBotRunnerRuntime(ctx context.Context, cfg config.Config, st *memory.Store, nodeID string) (store.Runtime, error) {
+func getOrCreateBotRunnerRuntime(ctx context.Context, cfg config.Config, st store.Stores, nodeID string) (store.Runtime, error) {
 	name := launch.BotRunnerRuntimeName(nodeID)
 	rt, err := st.Runtimes.ByName(ctx, name)
 	if err == nil {
@@ -390,11 +390,11 @@ func channelModePort(fs map[string]string) (channel, mode string, port int, err 
 	return channel, mode, port, nil
 }
 
-func botsStartWithCfg(ctx context.Context, cfg config.Config, st *memory.Store, botID string) error {
+func botsStartWithCfg(ctx context.Context, cfg config.Config, st store.Stores, botID string) error {
 	return botsStartWithLimit(ctx, st, botID, cfg.MaxBotsPerNode)
 }
 
-func botsStartWithLimit(ctx context.Context, st *memory.Store, botID string, maxBots int) error {
+func botsStartWithLimit(ctx context.Context, st store.Stores, botID string, maxBots int) error {
 	if err := ops.StartWithLimit(ctx, opsRepos(st), botID, maxBots); err != nil {
 		return err
 	}
@@ -407,7 +407,7 @@ func botsStartWithLimit(ctx context.Context, st *memory.Store, botID string, max
 	return nil
 }
 
-func botsStop(ctx context.Context, st *memory.Store, botID string) error {
+func botsStop(ctx context.Context, st store.Stores, botID string) error {
 	if err := ops.Stop(ctx, opsRepos(st), botID); err != nil {
 		return err
 	}
@@ -420,7 +420,7 @@ func botsStop(ctx context.Context, st *memory.Store, botID string) error {
 	return nil
 }
 
-func botsMigrate(ctx context.Context, cfg config.Config, st *memory.Store, args []string) error {
+func botsMigrate(ctx context.Context, cfg config.Config, st store.Stores, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: ctl bots migrate <bot-id> --to-node <node-id>")
 	}
@@ -450,7 +450,7 @@ func botsMigrate(ctx context.Context, cfg config.Config, st *memory.Store, args 
 	return nil
 }
 
-func runtimeSetDesired(ctx context.Context, st *memory.Store, runtimeID string, desired store.DesiredState) error {
+func runtimeSetDesired(ctx context.Context, st store.Stores, runtimeID string, desired store.DesiredState) error {
 	rt, err := st.Runtimes.ByID(ctx, runtimeID)
 	if err != nil {
 		return err
@@ -467,7 +467,7 @@ func runtimeSetDesired(ctx context.Context, st *memory.Store, runtimeID string, 
 	return nil
 }
 
-func botsList(ctx context.Context, st *memory.Store) error {
+func botsList(ctx context.Context, st store.Stores) error {
 	bots, err := st.Bots.List(ctx)
 	if err != nil {
 		return err
@@ -490,7 +490,7 @@ func botsList(ctx context.Context, st *memory.Store) error {
 	return w.Flush()
 }
 
-func runtimesList(ctx context.Context, st *memory.Store) error {
+func runtimesList(ctx context.Context, st store.Stores) error {
 	runtimes, err := st.Runtimes.List(ctx)
 	if err != nil {
 		return err

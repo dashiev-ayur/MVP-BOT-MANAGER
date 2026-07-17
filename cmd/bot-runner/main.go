@@ -58,6 +58,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "bot-runner: store: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() { _ = st.Close() }()
 
 	slog.Info("bot-runner старт",
 		"node_id", cfg.NodeID,

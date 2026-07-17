@@ -20,50 +20,37 @@
 
 | Этап | Реализация | Персистентность |
 |---|---|---|
-| Сейчас (Phase 0–4) | **In-memory** (`STORE=memory` + файл) | Пока живы процессы; общий JSON |
-| Позже (Phase PG) | **PostgreSQL** (`STORE=postgres`) | На диске / общий сервер |
+| Memory | **In-memory** (`STORE=memory` + файл) | Пока живы процессы; общий JSON |
+| Postgres (Phase PG) | **PostgreSQL** (`STORE=postgres`) | Docker Compose; в `.env` / `.env.example` — **по умолчанию** |
 
-Переключение — конфигом, без переписывания бизнес-логики.
+Переключение — конфигом (`STORE`, `DATABASE_URL` / `POSTGRES_*`), без переписывания бизнес-логики.  
+Compose читает `POSTGRES_*` из `.env` (согласованы с `DATABASE_URL`). Без `source .env` у Go остаётся `DefaultStore=memory`.
 
-### Сейчас (in-memory, Phase 4)
-
-Отдельный Postgres **не нужен**. `STORE=memory` по умолчанию.
-
-**После Phase 4:** restart/backoff, `MAX_BOTS_PER_NODE`, метрики (`GET /metrics`), маскирование токенов, file-watch wake reconcile, `doctor` / `drain-node` / `cmd/handoff`. LISTEN/NOTIFY и multi-runner sharding — не в этом наборе (PG / позже). Образец ENV — [`.env.example`](../.env.example). Команды — корневой [`README.md`](../README.md).
+### Сейчас (Phase PG — ✅ принята)
 
 ```bash
-go build ./cmd/...
-export NODE_ID=node-1 STORE=memory MEMORY_STORE_PATH=.mvp-manager/store.json
-export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
-./scripts/e2e-phase4.sh
-./scripts/e2e-phase1.sh && ./scripts/e2e-phase2.sh && ./scripts/e2e-phase3.sh
-go run ./cmd/doctor
-go run ./cmd/handoff --out /tmp/handoff-demo --name demo --port 18080
+# .env / .env.example: STORE=postgres + POSTGRES_* + DATABASE_URL*
+docker compose up -d          # credentials из .env
+set -a && source .env && set +a
+go run ./cmd/migrate up
+go run ./cmd/migrate seed         # 2+1 default, desired=stopped; идемпотентно
+go run ./cmd/ctl bots list        # STORE=postgres из .env
+go run ./cmd/agent
+./scripts/e2e-phase-pg.sh         # только mvp_manager_e2e
+STORE=memory ./scripts/e2e-phase1.sh   # memory e2e задают STORE явно
 ```
-
-`STORE=postgres` пока отклоняется с понятной ошибкой (Phase PG), без dial БД.
-
-### Позже (PostgreSQL) — Phase PG
-
-Требования зафиксированы в [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) (раздел Phase PG). Кратко:
 
 | Шаг | Команда | Когда |
 |---|---|---|
-| Поднять БД | `docker compose up -d` | одна команда — контейнер Postgres (две базы: dev + e2e) |
-| Миграции | `go run ./cmd/migrate up` (после реализации) | отдельно; для тестов — на `DATABASE_URL_E2E` |
-| Сиды | отдельная ручная команда seed | вручную в **dev**-БД; 2 клиента (UUID), 2+1 бота `default` |
-| Приложение | `STORE=postgres` + `DATABASE_URL` | рабочая БД `mvp_manager` |
-| E2E | `DATABASE_URL_E2E` → `mvp_manager_e2e` | та же инстанция Postgres, **другая база**, не schema |
+| Поднять БД | `docker compose up -d` | `mvp_manager` + `mvp_manager_e2e` |
+| Миграции | `go run ./cmd/migrate up` | e2e: `migrate up --e2e` |
+| Сиды | `go run ./cmd/migrate seed` | вручную в **dev** |
+| Приложение | `STORE=postgres` + `DATABASE_URL` | |
+| E2E | `./scripts/e2e-phase-pg.sh` | не трогает dev-сиды |
 
-Таблицы `clients` нет — только `bots.client_id`. Полный адаптер и файлы — по вашему `/manager Phase PG` после перечитывания плана.
+UUID сидов: клиент A `11111111-1111-4111-8111-111111111111` (2 бота), клиент B `22222222-2222-4222-8222-222222222222` (1 бот). Таблицы `clients` нет. Подробности — [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) Phase PG, корневой [`README.md`](../README.md).
 
-```bash
-docker compose up -d
-# далее (когда фаза будет реализована):
-# go run ./cmd/migrate up
-# go run ./cmd/migrate seed   # ориентир
-# STORE=postgres ./bin/agent
-```
+Memory по-прежнему: `STORE=memory` (см. корневой README).
 
 Одна общая PostgreSQL на ноды (1–3 сервера) — целевая схема для multi-node.
 
@@ -96,7 +83,7 @@ Go-модуль: **`mvp-manager`**. `bot-runner` — в этом же репоз
 ```
 
 ```text
-/manager Пользователь принял Phase 4 — отметь «Принято вами»
+/manager Пользователь принял Phase PG — отметь «Принято вами»
 ```
 
 ```text

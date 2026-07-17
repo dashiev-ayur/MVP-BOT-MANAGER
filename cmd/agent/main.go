@@ -21,7 +21,6 @@ import (
 	"mvp-manager/internal/store"
 	"mvp-manager/internal/storeopen"
 	"mvp-manager/internal/supervisor"
-	"mvp-manager/internal/watch"
 )
 
 // version — строка версии бинарника; позже можно подставлять через -ldflags.
@@ -67,6 +66,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "agent: store: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() { _ = st.Close() }()
 
 	slog.Info("конфиг загружен",
 		"node_id", cfg.NodeID,
@@ -100,7 +100,7 @@ func main() {
 	}
 	slog.Info("нода зарегистрирована", "node_id", cfg.NodeID, "hostname", hostname)
 
-	watcher := watch.OpenForStore(storeKind, cfg.MemoryStorePath, slog.Default())
+	watcher := storeopen.OpenWatcher(cfg, slog.Default())
 	defer func() { _ = watcher.Close() }()
 
 	sup := supervisor.New(cfg.ShutdownGrace)

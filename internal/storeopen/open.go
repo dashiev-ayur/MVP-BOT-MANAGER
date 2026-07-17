@@ -5,35 +5,76 @@
 package storeopen
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"mvp-manager/internal/config"
+	"mvp-manager/internal/store"
 	"mvp-manager/internal/store/memory"
+	"mvp-manager/internal/store/postgres"
+	"mvp-manager/internal/watch"
 )
 
-// Open создаёт store по значению STORE из конфига.
+// Open создаёт фасад store.Stores по значению STORE из конфига.
 //
 //   - memory → file-backed (или RAM, если MemoryStorePath пуст);
-//   - postgres → понятная ошибка «пока не реализовано» (Phase PG), без dial БД.
+//   - postgres → pgxpool по DATABASE_URL (схема должна быть уже применена migrate).
 //
-// Второй результат — каноническое имя бэкенда для логов (store=memory).
-func Open(cfg config.Config) (*memory.Store, string, error) {
+// Второй результат — каноническое имя бэкенда для логов (store=memory|postgres).
+// Caller обязан вызвать Stores.Close() (postgres закрывает пул; memory — no-op).
+func Open(cfg config.Config) (store.Stores, string, error) {
 	switch cfg.Store {
 	case config.StoreMemory:
 		st, err := memory.Open(cfg.MemoryStorePath)
 		if err != nil {
-			return nil, "", fmt.Errorf("open memory store: %w", err)
+			return store.Stores{}, "", fmt.Errorf("open memory store: %w", err)
 		}
-		return st, config.StoreMemory, nil
+		return st.AsStores(), config.StoreMemory, nil
+
 	case config.StorePostgres:
-		// Явно не трогаем DATABASE_URL и не импортируем pgx — Phase PG.
-		return nil, "", fmt.Errorf(
-			"%s=%s пока не реализован (Phase PG): используйте %s=%s",
-			config.EnvStore, config.StorePostgres,
-			config.EnvStore, config.StoreMemory,
-		)
+		if cfg.DatabaseURL == "" {
+			return store.Stores{}, "", fmt.Errorf(
+				"%s=%s требует %s (DSN PostgreSQL)",
+				config.EnvStore, config.StorePostgres, config.EnvDatabaseURL,
+			)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		st, err := postgres.Open(ctx, cfg.DatabaseURL)
+		if err != nil {
+			return store.Stores{}, "", fmt.Errorf("open postgres store: %w", err)
+		}
+		return st.AsStores(), config.StorePostgres, nil
+
 	default:
-		// config.Load уже отсекает неизвестные значения; защита на границе wiring.
-		return nil, "", fmt.Errorf("неизвестный store %q", cfg.Store)
+		return store.Stores{}, "", fmt.Errorf("неизвестный store %q", cfg.Store)
+	}
+}
+
+// OpenWatcher выбирает ChangeWatcher по STORE:
+//
+//   - memory + path → FileWatcher (mtime JSON);
+//   - postgres → LISTEN/NOTIFY (отдельное соединение); при ошибке — Nop + warn;
+//   - иначе → Nop.
+//
+// pgx остаётся только здесь и в internal/store/postgres — не в reconcile.
+func OpenWatcher(cfg config.Config, log *slog.Logger) watch.ChangeWatcher {
+	if log == nil {
+		log = slog.Default()
+	}
+	switch cfg.Store {
+	case config.StoreMemory:
+		return watch.OpenForStore(config.StoreMemory, cfg.MemoryStorePath, log)
+	case config.StorePostgres:
+		w, err := postgres.NewListenWatcher(cfg.DatabaseURL, log)
+		if err != nil {
+			log.Warn("postgres LISTEN/NOTIFY недоступен, reconcile на poll", "err", err)
+			return watch.NewNop()
+		}
+		return w
+	default:
+		return watch.NewNop()
 	}
 }

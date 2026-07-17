@@ -12,7 +12,8 @@ import (
 const (
 	EnvNodeID            = "NODE_ID"
 	EnvStore             = "STORE"
-	EnvDatabaseURL       = "DATABASE_URL" // зарезервировано под Phase PG; сейчас не обязательно
+	EnvDatabaseURL       = "DATABASE_URL"
+	EnvDatabaseURLE2E    = "DATABASE_URL_E2E" // e2e-БД; migrate --e2e / scripts
 	EnvMemoryStorePath   = "MEMORY_STORE_PATH"
 	EnvReconcileInterval = "RECONCILE_INTERVAL"
 	EnvHeartbeatInterval = "HEARTBEAT_INTERVAL"
@@ -75,16 +76,16 @@ const (
 )
 
 // Config — снимок конфигурации процесса после чтения ENV.
-//
-// Поля DatabaseURL пока только читаются (для будущего STORE=postgres);
-// подключение к БД на Phase 1 не выполняется.
 type Config struct {
 	// NodeID — идентификатор ноды агента (обязателен, непустой).
 	NodeID string
-	// Store — тип хранилища: memory (сейчас) или postgres (Phase PG).
+	// Store — тип хранилища: memory или postgres.
 	Store string
-	// DatabaseURL — DSN PostgreSQL; используется только при STORE=postgres (позже).
+	// DatabaseURL — DSN PostgreSQL (STORE=postgres); рабочая БД mvp_manager.
 	DatabaseURL string
+	// DatabaseURLE2E — DSN e2e-БД (mvp_manager_e2e); для migrate --e2e / scripts.
+	// Процессы agent/ctl обычно не читают это поле — только tooling.
+	DatabaseURLE2E string
 
 	// MemoryStorePath — JSON-файл общего состояния для STORE=memory.
 	// Пустая строка допустима только если явно задать MEMORY_STORE_PATH=""
@@ -174,8 +175,8 @@ func Load() (Config, error) {
 		// ok
 	default:
 		return Config{}, fmt.Errorf(
-			"неизвестный %s=%q: допустимы %q и %q (%s — позже, Phase PG)",
-			EnvStore, store, StoreMemory, StorePostgres, StorePostgres,
+			"неизвестный %s=%q: допустимы %q и %q",
+			EnvStore, store, StoreMemory, StorePostgres,
 		)
 	}
 
@@ -246,6 +247,7 @@ func Load() (Config, error) {
 		NodeID:              nodeID,
 		Store:               store,
 		DatabaseURL:         strings.TrimSpace(os.Getenv(EnvDatabaseURL)),
+		DatabaseURLE2E:      strings.TrimSpace(os.Getenv(EnvDatabaseURLE2E)),
 		MemoryStorePath:     memoryPath,
 		ReconcileInterval:   reconcileInterval,
 		HeartbeatInterval:   heartbeatInterval,

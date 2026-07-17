@@ -58,6 +58,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "control-api: store: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() { _ = st.Close() }()
 
 	srvAPI := api.New(cfg, ops.Repos{
 		Nodes:    st.Nodes,

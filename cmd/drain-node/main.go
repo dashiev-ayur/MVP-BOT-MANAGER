@@ -77,6 +77,7 @@ func main() {
 	if err != nil {
 		fatal("store: %v", err)
 	}
+	defer func() { _ = st.Close() }()
 	repos := ops.Repos{
 		Nodes: st.Nodes, Runtimes: st.Runtimes, Bots: st.Bots, Events: st.Events,
 	}

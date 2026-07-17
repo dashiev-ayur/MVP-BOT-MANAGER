@@ -72,6 +72,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "doctor: store: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() { _ = st.Close() }()
 
 	ctx := context.Background()
 	issues := 0

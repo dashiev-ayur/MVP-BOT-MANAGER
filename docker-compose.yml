@@ -1,0 +1,37 @@
+# Локальный PostgreSQL для Phase PG.
+# Подъём: docker compose up -d
+# Миграции и сиды — отдельно (не при compose up): go run ./cmd/migrate up|seed
+#
+# Credentials берутся из .env (см. .env.example): POSTGRES_USER/PASSWORD/DB/…
+# При отсутствии .env срабатывают defaults ниже — согласованы с .env.example.
+#
+# Init-скрипт создаёт две БД в одном контейнере:
+#   POSTGRES_DB     — dev / ручная работа (по умолчанию mvp_manager)
+#   POSTGRES_DB_E2E — e2e (DATABASE_URL_E2E), не трогает dev-данные
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    pull_policy: missing
+    container_name: mvp-manager-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mvp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mvp}
+      # База по умолчанию (создаётся образом); вторая — в init-скрипте.
+      POSTGRES_DB: ${POSTGRES_DB:-mvp_manager}
+      # Имя e2e-БД для docker/postgres/init-databases.sh
+      POSTGRES_DB_E2E: ${POSTGRES_DB_E2E:-mvp_manager_e2e}
+    volumes:
+      - mvp_manager_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh:ro
+    healthcheck:
+      # Подстановка из .env / defaults на этапе compose config (как у environment).
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mvp} -d ${POSTGRES_DB:-mvp_manager}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mvp_manager_pgdata:

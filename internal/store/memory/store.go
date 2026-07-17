@@ -106,6 +106,16 @@ func (st *Store) Path() string {
 	return st.shared().path
 }
 
+// AsStores возвращает общий фасад для cmd/storeopen (memory и postgres).
+func (st *Store) AsStores() store.Stores {
+	return store.Stores{
+		Nodes:    st.Nodes,
+		Runtimes: st.Runtimes,
+		Bots:     st.Bots,
+		Events:   st.Events,
+	}
+}
+
 func (st *Store) shared() *shared {
 	return st.Nodes.s
 }

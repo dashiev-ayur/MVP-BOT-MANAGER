@@ -55,6 +55,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "healthcheck: store: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() { _ = st.Close() }()
 
 	slog.Info("healthcheck старт",
 		"node_id", cfg.NodeID,
