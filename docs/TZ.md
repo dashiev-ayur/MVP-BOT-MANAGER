@@ -1,6 +1,6 @@
 # Техническое задание: MVP Bot Runtime Manager
 
-**Версия:** 0.2  
+**Версия:** 0.3  
 **Стек:** Go, PostgreSQL  
 **Статус:** MVP (1 сервер → расширение до 2–3)
 
@@ -37,10 +37,15 @@
 ```
 PostgreSQL (bots + runtimes + nodes)
         ↑↓
-   Agent@node-N
-        ├─ Supervisor → bot-runner (multi-tenant для default*)
-        └─ Supervisor → custom bot processes (1:1)
+   ┌────┴────┬─────────────┬──────────────┐
+   │         │             │              │
+ Agent   healthcheck   control-api       ctl
+   │
+   ├─ Supervisor → bot-runner (multi-tenant для default*)
+   └─ Supervisor → custom bot processes (1:1)
 ```
+
+Управление start/stop/add — через изменения в БД (`desired_state` и т.д.). API и CLI только удобные обёртки над теми же полями.
 
 ---
 
@@ -57,9 +62,12 @@ PostgreSQL (bots + runtimes + nodes)
 | Reconcile | desired ↔ actual для runtimes и состава ботов в runner |
 | Lease / assigned_node | Защита от двойного запуска |
 | Migrate | Перенос runner или custom-бота между нодами |
-| HTTP API (минимум) | CRUD ботов, start/stop, migrate |
+| Управление через БД | INSERT/UPDATE `bots` → агент/runner согласовывают состояние |
+| HTTP API | Отдельный `control-api` (CRUD, start/stop, migrate) |
+| CLI `ctl` | Операции из терминала без ручного SQL |
+| Healthcheck | Отдельный `cmd/healthcheck` для `/healthz` webhook-ботов |
 | Контракт запуска | Единый ENV/команда для custom и для single-bot выдачи клиенту |
-| Логи агента | slog |
+| Логи | slog в каждом бинарнике |
 
 ### 3.2. Out of scope (v1)
 
@@ -84,6 +92,7 @@ PostgreSQL (bots + runtimes + nodes)
 | **Desired / actual state** | Желаемое и фактическое состояние |
 | **Lease** | Временное владение runtime/ботом нодой |
 | **Handoff** | Передача клиенту исходников бота для запуска у себя |
+| **cmd** | Отдельный бинарник/`main` в `cmd/<name>` с своей ролью и жизненным циклом |
 
 ---
 
@@ -95,37 +104,88 @@ PostgreSQL (bots + runtimes + nodes)
 ┌──────────────────────────────────────────────────────────────┐
 │                     PostgreSQL                               │
 │         nodes | bots | runtimes | bot_events                 │
-└──────────────────────────▲───────────────────────────────────┘
-                           │
-                    Agent @ node-1
-                           │
-         ┌─────────────────┼─────────────────┐
-         ▼                                   ▼
- ┌───────────────────┐             ┌───────────────────┐
- │ bot-runner (PID)  │             │ custom bots (PID) │
- │  bot A (port P1)  │             │  acme-bot :P3     │
- │  bot B (port P2)  │             │  shop-bot :P4     │
- │  bot C (polling)  │             └───────────────────┘
- └───────────────────┘
+└─▲─────────▲──────────▲──────────▲────────────────────────────┘
+  │         │          │          │
+  │    control-api    ctl    healthcheck
+  │
+ Agent @ node-1
+  │
+  ├─ Supervisor → bot-runner (multi-tenant)
+  └─ Supervisor → custom bots (1:1)
 ```
 
-**Agent:**
+**Принцип разделения cmd:** выносить то, что отличается по жизненному циклу (разовое / другой интервал / не должно ронять демон). Ядро start/stop процессов остаётся в `agent`.
 
-1. Registrar / heartbeat  
-2. Reconciler (runtimes + желаемый набор ботов в runner)  
-3. Supervisor (`os/exec`)  
-4. HTTP API  
-5. Optional `LISTEN/NOTIFY`
+### 5.2. Состав бинарников (`cmd`)
 
-**Bot Runner (отдельный бинарник, ваш код):**
+#### Остаётся в `cmd/agent` (демон на каждой ноде)
 
-- читает из БД (или получает через API агента) список ботов с `bot_type ∈ default*` и `assigned_node_id = эта нода`, `desired_state=running`;
+| Ответственность | Почему здесь |
+|---|---|
+| Heartbeat ноды | Непрерывный цикл ноды |
+| Reconcile + lease | Ядро desired → actual |
+| Supervisor (`os/exec`) | Единственный владелец start/stop OS-процессов |
+| `Wait()` на children | Мгновенно видеть падение runtime |
+| Optional `LISTEN/NOTIFY` | Ускорение reconcile |
+
+Агент **не** занимается HTTP-проверками `/healthz` ботов и **не** является единственной точкой CRUD (это `control-api` / `ctl` / прямой SQL).
+
+#### Вынести в отдельные cmd
+
+| Cmd | Тип | Назначение |
+|---|---|---|
+| **`bot-runner`** | демон (под супервизором агента) | Multi-tenant runtime вшитых сценариев |
+| **`healthcheck`** | демон или cron-цикл | Опрос `GET /healthz` у webhook-ботов; пишет статус в БД; **не** рестартует процессы |
+| **`ctl`** | CLI (разовый) | `bots start\|stop\|add\|migrate\|list` через БД/API |
+| **`control-api`** | демон (часто 1 на кластер) | HTTP API; при 1 ноде можно временно совместить с агентом, целевая схема — отдельно |
+| **`migrate`** (DB tooling) | разовый | Применение SQL-миграций (`goose up`) |
+| **`handoff`** | разовый, после MVP | Сборка исходников + `.env.example` для выдачи клиенту |
+
+#### Позже (не MVP)
+
+| Cmd | Назначение |
+|---|---|
+| `drain-node` | Увести ботов с ноды перед ребутом |
+| `doctor` | Сверка портов, PID, lease, orphan-процессов |
+| `load-artifact` | Проверка наличия custom-артефакта и команды запуска |
+
+#### Не выносить из агента
+
+- логика lease и исполнение migrate на уровне процессов (stop → wait → start по факту строк в БД);
+- отдельный «мини-API только для health» — достаточно `healthcheck`.
+
+### 5.3. `cmd/healthcheck` — контракт
+
+1. Читает из БД ботов: `desired_state=running`, `run_mode=webhook`, `assigned_node_id` (локальная нода или все — по флагу).  
+2. Для каждого: `GET http://127.0.0.1:{port}/healthz` с таймаутом.  
+3. При успехе/провале обновляет `bots.last_error`, пишет `bot_events`, при серии фейлов выставляет маркер (например `actual_state`/`health_status=unhealthy`).  
+4. **Рестарт делает только `agent`** по reconcile (увидел unhealthy / failed → restart runtime или сигнал runner’у).  
+5. Для `polling` `/healthz` не обязателен: опора на PID/`Wait()` и статус от runner’а; опциональный внутренний heartbeat позже.
+
+Интервал healthcheck (например 10–30s) **независим** от `reconcile_interval`, чтобы таймауты HTTP не блокировали supervisor.
+
+### 5.4. Отказоустойчивость: кто упал
+
+| Событие | Поведение |
+|---|---|
+| Агент упал аварийно (panic, OOM, SIGKILL) | Дочерние боты/`bot-runner` **обычно продолжают работать**; управление по БД недоступно до рестарта агента |
+| Агент штатный stop (SIGTERM) | MVP: агент останавливает управляемые runtimes (политику «оставить детей» можно сменить позже) |
+| Упал custom-процесс | Агент видит через `Wait()` → `actual_state=failed` → restart по policy |
+| Упал весь `bot-runner` | То же через `Wait()` |
+| Упал один default-инстанс внутри runner | Runner обновляет статус бота в БД; агент/healthcheck дополняют картину |
+| Бот «жив, но завис» (webhook) | Обнаруживает **`healthcheck`** по `/healthz` |
+
+### 5.5. Bot Runner (кратко)
+
+- читает из БД список ботов с `bot_type ∈ default*` и `assigned_node_id = эта нода`, `desired_state=running`;
 - для каждого такого бота поднимает внутренний инстанс (горутина / модуль сценария);
 - **webhook:** слушает **уникальный `port` бота** внутри того же процесса (несколько `Listen` в одном процессе);
 - **polling:** long poll в горутине, порт в БД зарезервирован, но не биндится (см. §6.3);
 - горячо подхватывает add/remove/update ботов по `config_version` / reconcile.
 
-### 5.2. Инварианты
+Подробности — §7.
+
+### 5.6. Инварианты
 
 1. Multi-tenant применяется **только** к вшитым типам (`default`, `default-extended`, …).  
 2. `custom` всегда dedicated: отдельный OS-процесс.  
@@ -133,9 +193,10 @@ PostgreSQL (bots + runtimes + nodes)
 4. Бот с `desired_state=running` активен только на `assigned_node_id`.  
 5. Один bot не обслуживается двумя runner’ами / двумя dedicated-процессами одновременно (lease).  
 6. Migrate: stop/remove на A → смена assignment → start/add на B.  
-7. Reconcile идемпотентен.
+7. Reconcile идемпотентен.  
+8. Проверка `/healthz` — только в `healthcheck`; рестарт процессов — только в `agent`.
 
-### 5.3. Нагрузка (ожидание)
+### 5.7. Нагрузка (ожидание)
 
 - N default-ботов ≈ **1 процесс** `bot-runner` (+ память на инстансы внутри, существенно меньше N отдельных процессов).  
 - M custom-ботов ≈ **M процессов** (Go легче, Node тяжелее — учитывать при лимитах).  
@@ -365,7 +426,7 @@ npm start
 
 ## 10. Поведение агента
 
-### 10.1. Конфиг
+### 10.1. Конфиг агента
 
 ```yaml
 node_id: node-1
@@ -374,10 +435,12 @@ reconcile_interval: 3s
 heartbeat_interval: 5s
 lease_ttl: 15s
 shutdown_grace: 10s
-api_addr: ":8080"
 bot_runner_command: /usr/local/bin/bot-runner
 bot_runner_workdir: /var/lib/mvp-manager/runner
 ```
+
+Конфиг `healthcheck` (отдельно): `check_interval`, `http_timeout`, `failure_threshold`, `database_url`, опционально `node_id`.  
+Конфиг `control-api`: `api_addr`, `database_url`, auth token.
 
 ### 10.2. Reconcile (упрощённо)
 
@@ -413,11 +476,13 @@ bot_runner_workdir: /var/lib/mvp-manager/runner
 
 ---
 
-## 11. HTTP API (минимум)
+## 11. HTTP API (`cmd/control-api`)
+
+Канонический путь управления — строки в PostgreSQL. `control-api` и `ctl` только меняют те же поля.
 
 | Method | Path | Описание |
 |---|---|---|
-| `GET` | `/healthz` | liveness агента |
+| `GET` | `/healthz` | liveness **control-api** (не путать с `/healthz` ботов) |
 | `GET` | `/v1/nodes` | ноды |
 | `GET` | `/v1/bots` | список ботов |
 | `POST` | `/v1/bots` | создать (port, bot_type, custom_name, …) |
@@ -431,18 +496,34 @@ bot_runner_workdir: /var/lib/mvp-manager/runner
 Создание `default` бота не создаёт новый OS-процесс — только строку в `bots` и привязку к runner.  
 Создание `custom` — строка в `bots` + `runtimes`.
 
+Эквивалент через CLI: `ctl bots start|stop|create|migrate|list`.
+
 ---
 
-## 12. Структура репозиториев
+## 12. Структура репозиториев и cmd
 
 ```
-mvp-manager/                 # этот репо: агент + ТЗ
-├── cmd/agent/
-├── internal/...
+mvp-manager/
+├── cmd/
+│   ├── agent/           # демон ноды: reconcile, lease, supervisor
+│   ├── healthcheck/     # опрос /healthz webhook-ботов → БД
+│   ├── ctl/             # CLI-операции над ботами
+│   ├── control-api/     # HTTP API (1 на кластер; на MVP допустим совместно с agent)
+│   ├── migrate/         # goose/sql migrations runner (опционально)
+│   └── handoff/         # позже: упаковка исходников клиенту
+├── internal/
+│   ├── config/
+│   ├── db/
+│   ├── node/
+│   ├── reconcile/
+│   ├── supervisor/
+│   ├── lease/
+│   ├── health/          # общая логика проверки, используется cmd/healthcheck
+│   └── api/             # handlers для control-api
 ├── migrations/
 └── docs/TZ.md
 
-bot-runner/                  # multi-tenant рантайм вшитых сценариев (можно monorepo)
+bot-runner/              # отдельно или monorepo
 ├── cmd/runner/
 └── internal/scenarios/
       ├── default/
@@ -451,7 +532,7 @@ bot-runner/                  # multi-tenant рантайм вшитых сцен
 bots-custom/<custom_name>/   # отдельные репо; агент только запускает артефакт
 ```
 
-Зависимости агента: `pgx/v5`, migrate (goose), `log/slog`, тонкий HTTP router.
+Зависимости: `pgx/v5`, goose/migrate, `log/slog`; HTTP-router — в `control-api`, не в `agent`.
 
 ---
 
@@ -459,35 +540,41 @@ bots-custom/<custom_name>/   # отдельные репо; агент толь�
 
 ### Phase 0 — каркас
 
-- [ ] Go-модуль агента, миграции `nodes`, `runtimes`, `bots`, `bot_events`  
+- [ ] Go-модуль, каркас `cmd/agent`, `cmd/ctl`, `cmd/migrate`  
+- [ ] Миграции `nodes`, `runtimes`, `bots`, `bot_events`  
 - [ ] docker-compose с PostgreSQL  
 - [ ] конфиг / подключение к БД  
 
 ### Phase 1 — custom dedicated + supervisor
 
-- [ ] Supervisor start/stop  
+- [ ] Supervisor start/stop в `agent`  
 - [ ] Reconcile для `kind=custom_bot`  
-- [ ] API create/start/stop custom  
+- [ ] Управление через БД + `ctl` (start/stop/create)  
 - [ ] Уникальность port  
+- [ ] Минимальный `control-api` (или только `ctl` на первом шаге)  
 
-### Phase 2 — multi-tenant runner
+### Phase 2 — multi-tenant runner + healthcheck
 
 - [ ] Бинарник `bot-runner` со сценарием `default`  
 - [ ] Несколько ботов в одном процессе (webhook ports + polling)  
 - [ ] Динамический add/remove инстансов  
 - [ ] Агент поднимает один runner на ноду  
+- [ ] `cmd/healthcheck`: опрос `/healthz`, запись в БД, без рестартов  
+- [ ] Агент реагирует на unhealthy/failed  
 
 ### Phase 3 — типы и migrate
 
 - [ ] `default_extended` и расширяемый каталог типов  
 - [ ] Lease, multi-node assignment  
-- [ ] Migrate custom и default-бота  
+- [ ] Migrate custom и default-бота (`ctl` / `control-api`)  
+- [ ] Вынос `control-api` в отдельный процесс при 2-й ноде  
 - [ ] Шаблон handoff (`.env.example` + single-bot README)  
 
 ### Phase 4 — hardening
 
 - [ ] LISTEN/NOTIFY, метрики, лимиты ботов на ноду  
 - [ ] Шардирование на несколько runner’ов  
+- [ ] `cmd/handoff`, опционально `doctor` / `drain-node`  
 - [ ] Улучшение секретов токенов  
 
 ---
@@ -503,6 +590,8 @@ bots-custom/<custom_name>/   # отдельные репо; агент толь�
 | Режимы | webhook и long polling |
 | Handoff | исходники Go/Node + launch contract |
 | Надёжность | нет двойного обслуживания одного bot_id |
+| Разделение cmd | agent / healthcheck / ctl / control-api / bot-runner |
+| Обнаружение зависания webhook | отдельный `healthcheck`, не агент |
 | API security | localhost или token |
 
 ---
@@ -517,6 +606,8 @@ bots-custom/<custom_name>/   # отдельные репо; агент толь�
 | Два runner подхватили одного бота | `runtime_id` + `assigned_node` + lease |
 | Порт занят | проверка перед start; UNIQUE в БД |
 | Handoff расходится с prod | один launch contract для runner-instance export и custom |
+| Healthcheck блокирует reconcile | вынесен в отдельный `cmd/healthcheck` |
+| Агент упал — потеряли ботов | children живут при аварийном падении; после рестарта агент догоняет БД |
 
 ---
 
@@ -527,9 +618,11 @@ bots-custom/<custom_name>/   # отдельные репо; агент толь�
 3. Polling-бот работает без bind порта, порт зарезервирован в БД.  
 4. `custom` бот стартует отдельным процессом по `start_command` + ENV.  
 5. `custom_name` обязателен только для `custom`.  
-6. Start/stop через БД/API отражается в actual state.  
-7. Задокументирован handoff: исходники + `.env.example`.  
-8. Закладываются `assigned_node_id` и migrate без двойного запуска.
+6. Start/stop через БД (`ctl`/API) отражается в actual state.  
+7. `healthcheck` детектит падение `/healthz` и пишет в БД; рестарт выполняет `agent`.  
+8. Бинарники разделены: как минимум `agent`, `bot-runner`, `healthcheck`, `ctl`.  
+9. Задокументирован handoff: исходники + `.env.example`.  
+10. Закладываются `assigned_node_id` и migrate без двойного запуска.
 
 ---
 
@@ -597,7 +690,11 @@ POST /v1/bots/{id}/migrate
 | Порт | UNIQUE в БД на каждого бота |
 | Поля бота | port, bot_type, custom_name (для custom) |
 | Режимы | webhook + long polling |
-| Handoff | Исходники Go/Node + launch contract |
+| Управление | Изменения в БД; `ctl` / `control-api` — обёртки |
+| `/healthz` ботов | Отдельный `cmd/healthcheck`; рестарт только в `agent` |
+| HTTP API | `cmd/control-api` (не смешивать с ядром агента) |
+| CLI | `cmd/ctl` |
+| Handoff | Исходники Go/Node + launch contract; утилита `cmd/handoff` позже |
 | Масштаб | MVP: 1 нода; дизайн на 2–3 |
 | Авто-failover | Нет в MVP |
 
@@ -605,7 +702,8 @@ POST /v1/bots/{id}/migrate
 
 ## 19. Дальнейшие шаги
 
-1. Утвердить v0.2 (особенно: multi-listen портов в одном runner vs path-based — выбран multi-listen под UNIQUE port).  
-2. Phase 0–1 (агент + custom).  
-3. Phase 2 (`bot-runner` + 2 default-бота в одном процессе).  
-4. Шаблон handoff для default → single-bot репо.
+1. Утвердить v0.3 (разделение cmd + healthcheck).  
+2. Phase 0–1 (`agent` + custom + `ctl`).  
+3. Phase 2 (`bot-runner` + `healthcheck`).  
+4. При второй ноде — вынести `control-api`.  
+5. Шаблон handoff для default → single-bot репо.
