@@ -11,9 +11,56 @@ SPA-админка mvp-manager (Phase UI). Клиент ходит **тольк�
 
 - Node.js 20+ (рекомендуется LTS)
 - Запущенный `control-api` на `127.0.0.1:8080` (или свой URL)
-- Токен оператора: переменная окружения **`CONTROL_API_TOKEN`** на стороне API (тот же секрет вводите на экране входа — UI-1)
+- Токен оператора — см. ниже
 
-Секрет токена в логах UI не печатаем.
+Секрет токена в логах UI не печатаем. В репозитории токен **не зашит**.
+
+## Токен (`CONTROL_API_TOKEN`)
+
+Токен задаётся **только** при запуске `control-api` переменной окружения. На экране входа UI в поле **Bearer token** нужно ввести **то же значение**.
+
+| Где | Что |
+|---|---|
+| API | `export CONTROL_API_TOKEN=…` перед `go run ./cmd/control-api` |
+| UI (форма входа) | то же значение в «Bearer token» |
+| Образец | [`.env.example`](../.env.example) (строка закомментирована; `.env` сам по себе не подхватывается) |
+| После входа | сессия в `localStorage` (`mvp-manager.session`), не в git |
+
+Без `CONTROL_API_TOKEN` все `/v1/*` отвечают **401**.
+
+## Проверка вручную (два терминала)
+
+Оба процесса оставьте работать (не останавливайте Ctrl+C, пока проверяете UI).
+
+**Терминал 1** — из корня репозитория:
+
+```bash
+export NODE_ID=node-1
+export STORE=memory
+export CONTROL_API_TOKEN=dev-token
+go run ./cmd/control-api
+```
+
+Дождитесь лога `control-api слушает addr=127.0.0.1:8080`.
+
+**Терминал 2** — UI:
+
+```bash
+cd web
+npm install   # один раз
+npm run dev
+```
+
+Откройте URL Vite (обычно `http://localhost:5173/`). На экране входа:
+
+| Поле | Значение |
+|---|---|
+| Base URL API | **пусто** (dev-proxy на `:8080`) |
+| Bearer token | `dev-token` (или ваш `CONTROL_API_TOKEN`) |
+
+Если меняли токен на API — в форме указывайте новое значение. После «Выйти» сессия очищается.
+
+Для Start/Stop/Migrate с реальным `actual_state` нужен ещё `agent` (см. корневой [`README.md`](../README.md)).
 
 ## Установка
 
@@ -46,7 +93,7 @@ VITE_CONTROL_API_URL=http://127.0.0.1:8080 npm run dev
 Если указать `http://127.0.0.1:8080` напрямую — нужен CORS на control-api (уже включён)
 или тот же пустой Base URL (UI сам сведёт localhost:8080 к proxy).
 
-Маршруты: `/login`, `/`, `/bots`, `/nodes`, `/runtimes`, `/bots/:id`.
+Маршруты: `/login`, `/`, `/bots`, `/bots/new`, `/bots/:id`, `/nodes`, `/runtimes`.
 
 ## Сборка и preview
 
@@ -61,9 +108,9 @@ Production: раздавайте `web/dist` static server / reverse-proxy ряд
 
 ```
 src/
-  api/       # client, types (snake_case), endpoints
-  auth/      # session + LoginPage (заглушка)
-  layout/    # AppShell (заглушка)
-  pages/     # экраны (пока заглушки)
+  api/       # client, types (snake_case), endpoints, mutations
+  auth/      # session + LoginPage
+  layout/    # AppShell, health indicator
+  pages/     # обзор, боты, ноды, runtimes, карточка
   styles/    # tokens + global
 ```

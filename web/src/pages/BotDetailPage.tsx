@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { listBotEvents, listBots, listNodes } from '../api/lists'
-import { startBot, stopBot } from '../api/mutations'
+import { migrateBot, startBot, stopBot } from '../api/mutations'
 import type { Bot, BotEvent, Node } from '../api/types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { MigrateDialog } from '../components/MigrateDialog'
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageToolbar } from '../layout/PageStates'
 import { StatePill } from '../layout/StatePill'
 import { formatAbsoluteShort, formatRelativeRu } from '../lib/formatTime'
@@ -75,8 +76,8 @@ function showStopAction(bot: Bot): boolean {
 }
 
 /**
- * Карточка бота (/bots/:id) — паспорт + Start/Stop + лента событий (UI-3/4).
- * Migrate — UI-5; PATCH — P1.
+ * Карточка бота (/bots/:id) — паспорт + Start/Stop/Migrate + события (UI-3/4/5).
+ * PATCH edit — P1 (UI-6).
  *
  * key={id} снаружи: useFetchList не зависит от id, при смене :id нужен remount.
  */
@@ -86,21 +87,32 @@ export function BotDetailPage() {
   return <BotDetailBody key={id} id={id} />
 }
 
+/** Есть ли ноды, кроме текущей assigned — иначе migrate некуда. */
+function hasMigrateTargets(nodes: Node[], assignedNodeId: string | null): boolean {
+  return nodes.some((n) => n.id !== assignedNodeId)
+}
+
 function BotDetailBody({ id }: { id: string }) {
   const passport = useFetchList(fetchDetailSnapshot)
   const eventsState = useFetchList((signal) => listBotEvents(id, signal))
 
-  const [actionBusy, setActionBusy] = useState<'start' | 'stop' | null>(null)
+  const [actionBusy, setActionBusy] = useState<'start' | 'stop' | 'migrate' | null>(null)
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
+  const [migrateConfirmOpen, setMigrateConfirmOpen] = useState(false)
   const [actionInfo, setActionInfo] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const showPassportInitial = passport.loading && passport.data === null
   const bot = passport.data?.bots.find((b) => b.id === id) ?? null
+  const nodes = useMemo(
+    () => (passport.data ? Array.from(passport.data.nodesById.values()) : []),
+    [passport.data],
+  )
   const nodeHostname =
     bot?.assigned_node_id && passport.data
       ? (passport.data.nodesById.get(bot.assigned_node_id)?.hostname ?? null)
       : null
+  const canMigrate = bot ? hasMigrateTargets(nodes, bot.assigned_node_id) : false
 
   /** Обновить паспорт и ленту одним кликом в тулбаре. */
   function refreshAll() {
@@ -151,6 +163,32 @@ function BotDetailBody({ id }: { id: string }) {
     }
   }
 
+  async function runMigrate(toNodeId: string) {
+    // Без to_node_id не вызываем API (кнопка в dialog тоже disabled).
+    if (!toNodeId) {
+      return
+    }
+    setActionError(null)
+    setActionInfo(null)
+    setActionBusy('migrate')
+    try {
+      await migrateBot(id, toNodeId)
+      setMigrateConfirmOpen(false)
+      setActionInfo(
+        'Команда migrate принята; actual станет migrating, затем обновится после reconcile',
+      )
+      refreshAll()
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setActionError(err.message)
+      } else {
+        setActionError(err instanceof Error ? err.message : 'Не удалось выполнить Migrate')
+      }
+    } finally {
+      setActionBusy(null)
+    }
+  }
+
   return (
     <main>
       <PageToolbar
@@ -182,6 +220,24 @@ function BotDetailBody({ id }: { id: string }) {
                 Stop
               </button>
             ) : null}
+            {bot ? (
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => {
+                  setActionError(null)
+                  setMigrateConfirmOpen(true)
+                }}
+                disabled={actionBusy !== null || !canMigrate}
+                title={
+                  canMigrate
+                    ? 'Перенести бота на другую ноду'
+                    : 'Нет других нод для переноса'
+                }
+              >
+                Migrate…
+              </button>
+            ) : null}
             <Link to="/bots" className="btn btn--secondary">
               К списку
             </Link>
@@ -191,6 +247,19 @@ function BotDetailBody({ id }: { id: string }) {
 
       {passport.error ? (
         <ErrorBlock message={passport.error} onRetry={passport.refresh} />
+      ) : null}
+
+      {/* Честное пояснение: при одной ноде (или только текущей) migrate недоступен. */}
+      {bot && !canMigrate && nodes.length > 0 ? (
+        <p className="bot-action-info" role="status">
+          Migrate недоступен: нет других нод для переноса.
+        </p>
+      ) : null}
+
+      {bot && !canMigrate && nodes.length === 0 && !showPassportInitial ? (
+        <p className="bot-action-info" role="status">
+          Migrate недоступен: список нод пуст.
+        </p>
       ) : null}
 
       {actionError ? (
@@ -249,6 +318,21 @@ function BotDetailBody({ id }: { id: string }) {
         onCancel={() => {
           if (actionBusy !== 'stop') {
             setStopConfirmOpen(false)
+          }
+        }}
+      />
+
+      {/* Migrate: select + confirm; POST только после Confirm с to_node_id. */}
+      <MigrateDialog
+        open={migrateConfirmOpen}
+        botName={bot?.name ?? ''}
+        nodes={nodes}
+        currentNodeId={bot?.assigned_node_id ?? null}
+        busy={actionBusy === 'migrate'}
+        onConfirm={(toNodeId) => void runMigrate(toNodeId)}
+        onCancel={() => {
+          if (actionBusy !== 'migrate') {
+            setMigrateConfirmOpen(false)
           }
         }}
       />

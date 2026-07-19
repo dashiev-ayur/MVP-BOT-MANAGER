@@ -320,25 +320,25 @@ cd web && npm install && npm run dev
 
 **Сделать**
 
-- [ ] Действие «Migrate…» на карточке  
-- [ ] Dialog: select нод из `GET /v1/nodes` (online выше; текущая исключена/disabled)  
-- [ ] Confirm + `POST /v1/bots/{id}/migrate` с `{ "to_node_id" }`  
-- [ ] Обновление карточки после успеха; показ ошибок  
+- [x] Действие «Migrate…» на карточке  
+- [x] Dialog: select нод из `GET /v1/nodes` (online выше; текущая исключена/disabled)  
+- [x] Confirm + `POST /v1/bots/{id}/migrate` с `{ "to_node_id" }`  
+- [x] Обновление карточки после успеха; показ ошибок  
 
 **Не делать:** drain-node; handoff; авто-выбор ноды «умным» балансировщиком.
 
 **Критерии tester**
 
-- [ ] build PASS  
-- [ ] без `to_node_id` submit не уходит / API 400 обработан  
-- [ ] путь migrate вызывается только из confirm  
+- [x] build PASS  
+- [x] без `to_node_id` submit не уходит / API 400 обработан  
+- [x] путь migrate вызывается только из confirm  
 
 **Ручная проверка**
 
 1. При ≥2 нодах: migrate → статус/desired/actual/migrating или ошибка с текстом.  
 2. При 1 ноде: UI честно показывает, что переносить некуда (или только текущая disabled).
 
-**Принято вами:** [ ]
+**Принято вами:** [x] (2026-07-19)
 
 ---
 

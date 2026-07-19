@@ -837,3 +837,39 @@ main p {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+.confirm-dialog__panel--migrate {
+  width: min(100%, 28rem);
+}
+
+.confirm-dialog__message > p {
+  margin: 0 0 var(--space-3);
+}
+
+.migrate-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  font-size: 0.9rem;
+}
+
+.migrate-dialog__field select {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font: inherit;
+}
+
+.migrate-dialog__field select:focus {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.migrate-dialog__confirm-hint {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}

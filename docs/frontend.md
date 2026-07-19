@@ -661,7 +661,7 @@ web/
 - [x] Карточка бота + events (UI-3, 2026-07-19)  
 - [x] Create bot (UI-4, 2026-07-19)  
 - [x] Start / Stop (+ confirm stop) (UI-4, 2026-07-19)  
-- [ ] Migrate (+ выбор ноды, confirm)  
+- [x] Migrate (+ выбор ноды, confirm) (UI-5, 2026-07-19)  
 - [x] Список нод (UI-2, 2026-07-19)  
 - [ ] Документация запуска в `web/README.md`  
 - [x] Выравнивание JSON snake_case (API задача A, UI-0a, 2026-07-19)

@@ -8,6 +8,21 @@
 
 **UI:** каталог [`web/`](./web/) в этом репозитории (monorepo). Клиент ходит только в `control-api`. ТЗ — [`docs/frontend.md`](./docs/frontend.md); план блоков (manager/developer/tester) — [`docs/FRONTEND_PLAN.md`](./docs/FRONTEND_PLAN.md).
 
+### UI: быстрая проверка
+
+Токен **не зашит** в коде — задаётся env при старте API; тот же секрет вводите на экране входа.
+
+```bash
+# терминал 1 (корень репозитория)
+export NODE_ID=node-1 STORE=memory CONTROL_API_TOKEN=dev-token
+go run ./cmd/control-api
+
+# терминал 2
+cd web && npm install && npm run dev
+```
+
+В форме входа: **Base URL** — пусто; **Bearer token** — `dev-token`. Подробнее — [`web/README.md`](./web/README.md).
+
 ## Сборка
 
 ```bash

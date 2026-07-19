@@ -432,8 +432,8 @@ export STORE=postgres
 
 ### UI-5. Migrate
 
-- [ ] Dialog выбора ноды + confirm + `POST .../migrate`
-- [ ] **Принято вами**
+- [x] Dialog выбора ноды + confirm + `POST .../migrate`
+- [x] **Принято вами** (2026-07-19)
 
 ### UI-6. P1 polish
 

@@ -63,6 +63,29 @@ export function stopBot(id: string, signal?: AbortSignal): Promise<LifecycleOk> 
   })
 }
 
+/** Ответ migrate: assignment переведён; actual догонит agent (migrating → …). */
+export type MigrateOk = {
+  status: string
+  bot_id: string
+  to_node_id: string
+}
+
+/**
+ * POST /v1/bots/{id}/migrate — тело `{ to_node_id }` (обязателен).
+ * Без выбора ноды клиент не должен вызывать; сервер вернёт 400.
+ */
+export function migrateBot(
+  id: string,
+  toNodeId: string,
+  signal?: AbortSignal,
+): Promise<MigrateOk> {
+  return apiRequest<MigrateOk>(endpoints.botMigrate(id), {
+    method: 'POST',
+    body: { to_node_id: toNodeId },
+    signal,
+  })
+}
+
 /**
  * Собрать тело create без лишних полей.
  * Для non-custom не кладём custom_name / artifact_path / start_command / workdir.
