@@ -153,21 +153,21 @@ curl -s -H "Authorization: Bearer $CONTROL_API_TOKEN" http://127.0.0.1:8080/v1/b
 
 **Сделать**
 
-- [ ] `web/`: Vite + React + TypeScript  
-- [ ] `npm run dev` / `build` / `preview` работают  
-- [ ] Dev-proxy: `/v1`, `/healthz` → `127.0.0.1:8080` (или `VITE_*`)  
-- [ ] Базовая структура каталогов из [frontend.md](./frontend.md) §10 (можно заглушки страниц)  
-- [ ] `web/README.md`: install, dev, build, нужен `CONTROL_API_TOKEN`  
-- [ ] Заготовка `api/types.ts` + `api/client.ts` (fetch, base URL, Bearer) под snake_case  
-- [ ] Заглушка роутера: `/login` и `/` (можно пустые)
+- [x] `web/`: Vite + React + TypeScript  
+- [x] `npm run dev` / `build` / `preview` работают  
+- [x] Dev-proxy: `/v1`, `/healthz` → `127.0.0.1:8080` (или `VITE_*`)  
+- [x] Базовая структура каталогов из [frontend.md](./frontend.md) §10 (можно заглушки страниц)  
+- [x] `web/README.md`: install, dev, build, нужен `CONTROL_API_TOKEN`  
+- [x] Заготовка `api/types.ts` + `api/client.ts` (fetch, base URL, Bearer) под snake_case  
+- [x] Заглушка роутера: `/login` и `/` (можно пустые)
 
 **Не делать:** полноценный login UX; таблицы ботов; Go (если 0a уже закрыт).
 
 **Критерии tester**
 
-- [ ] `cd web && npm ci` (или `npm i`) + `npm run build` → 0  
-- [ ] В `vite.config` есть proxy на control-api  
-- [ ] README содержит команды запуска  
+- [x] `cd web && npm ci` (или `npm i`) + `npm run build` → 0  
+- [x] В `vite.config` есть proxy на control-api  
+- [x] README содержит команды запуска  
 
 **Ручная проверка**
 
@@ -176,7 +176,7 @@ cd web && npm install && npm run dev
 # открыть URL Vite; страница грузится без ошибок в console
 ```
 
-**Принято вами:** [ ]
+**Принято вами:** [x] (2026-07-19)
 
 ---
 

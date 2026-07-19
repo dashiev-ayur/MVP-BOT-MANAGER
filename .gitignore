@@ -48,3 +48,6 @@ temp/
 postgres-data/
 .data/
 .mvp-manager/
+
+# Node (web/)
+node_modules/

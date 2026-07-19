@@ -400,10 +400,10 @@ export STORE=postgres
 
 ### UI-0b. Scaffold `web/`
 
-- [ ] Vite + React + TypeScript в `web/`
-- [ ] Dev-proxy → control-api; `api/client` + types
-- [ ] `npm run build`; `web/README.md` с командами
-- [ ] **Принято вами**
+- [x] Vite + React + TypeScript в `web/`
+- [x] Dev-proxy → control-api; `api/client` + types
+- [x] `npm run build`; `web/README.md` с командами
+- [x] **Принято вами** (2026-07-19)
 
 ### UI-1. Auth + App shell
 

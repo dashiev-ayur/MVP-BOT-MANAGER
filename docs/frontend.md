@@ -105,17 +105,19 @@ mvp-manager/
 | Dev proxy | Proxy `/v1` и `/healthz` → `API_ADDR` (`127.0.0.1:8080`), чтобы упростить CORS в dev |
 | Runtime override | На экране входа оператор может задать другой base URL |
 
-### 3.4. Запуск (после появления кода — дописать точные команды)
+### 3.4. Запуск
 
-Ожидаемый минимум в README/`web/README.md`:
+Команды (UI-0b, 2026-07-19) — также в [`web/README.md`](../web/README.md):
 
 ```bash
 cd web
 npm install
-npm run dev      # локальная разработка
+npm run dev      # Vite; proxy /v1 и /healthz → control-api (127.0.0.1:8080 или VITE_CONTROL_API_URL)
 npm run build    # статика в web/dist
 npm run preview  # проверка сборки
 ```
+
+Нужен запущенный `control-api` и `CONTROL_API_TOKEN` для реальных запросов (после UI-1 — через экран входа).
 
 Production: раздача `web/dist` любым static server / reverse-proxy рядом с `control-api`. CORS: либо same-origin через proxy, либо явная настройка на API (если понадобится — отдельная задача в control-api).
 
@@ -651,7 +653,7 @@ web/
 
 ### P0 — первый usable UI
 
-- [ ] Scaffold Vite+React+TS в `web/`  
+- [x] Scaffold Vite+React+TS в `web/` (UI-0b, 2026-07-19)  
 - [ ] Login (URL + token) + session  
 - [ ] App shell + индикатор `/healthz`  
 - [ ] Обзор (сводки + проблемы)  

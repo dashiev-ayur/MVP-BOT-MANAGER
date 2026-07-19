@@ -1,0 +1,39 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  color: var(--color-fg);
+  background: var(--color-bg);
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell__header {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: #fff;
+}
+
+.app-shell__body {
+  padding: var(--space-4);
+}
+
+main h1 {
+  margin: 0 0 var(--space-2);
+  font-size: 1.5rem;
+}
+
+main p {
+  margin: 0;
+  color: var(--color-muted);
+}
