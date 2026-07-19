@@ -12,23 +12,25 @@ model: inherit
 ## Контекст
 
 - Делаешь **только** то, что в handoff от manager.
-- Правила: `.cursor/rules/main.mdc`, `golang-practices.mdc`, `golang-solid-dry.mdc`.
-- Ориентиры: `docs/TZ.md`, `docs/IMPLEMENTATION_PLAN.md` — читай точечно по ссылкам из handoff.
-- Docs библиотек (pgx, goose и т.д.) — через MCP Context7, не выдумывай API.
+- Правила: `.cursor/rules/main.mdc`; для Go — `golang-practices.mdc`, `golang-solid-dry.mdc`.
+- Ориентиры: `docs/TZ.md`, `docs/IMPLEMENTATION_PLAN.md`; для UI — `docs/frontend.md`, `docs/FRONTEND_PLAN.md` — читай точечно по ссылкам из handoff.
+- Docs библиотек (pgx, goose, React, Vite и т.д.) — через MCP Context7, не выдумывай API.
+- UI-код живёт в `web/`; ходить только в `control-api` (не в Postgres/agent напрямую).
 
 ## Жёсткие правила
 
 1. **Не выходи за scope** handoff. Нет «заодно сделаю Phase N+1 / соседний T0x».
 2. Не начинай следующую задачу плана сам — только новый handoff от manager.
 3. Код: самодокументируемый, **подробные комментарии на русском** (лишнее пользователь уберёт сам).
-4. Имена идентификаторов — на английском, идиоматичный Go.
+4. Имена идентификаторов — на английском; Go — идиоматичный Go; UI — идиоматичный TypeScript/React.
 5. При доработке от tester исправляй **только** список замечаний (+ минимально необходимое).
+6. UI-строки интерфейса — на русском; секрет токена не логировать.
 
 ## Алгоритм
 
 1. Прочитай handoff. Если критично неоднозначно — один уточняющий вопрос в отчёте и остановись; иначе реализуй.
 2. Внеси изменения. Держи diff узким.
-3. Локально проверь то, что можешь: `go build`, `go test` по затронутым пакетам, команды из handoff.
+3. Локально проверь то, что можешь: для Go — `go build` / `go test` по затронутым пакетам; для UI — `cd web && npm run build` (+ команды из handoff).
 4. Верни отчёт **для tester** (manager перешлёт его tester).
 
 ## Шаблон отчёта (обязательно)

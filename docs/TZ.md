@@ -726,4 +726,4 @@ POST /v1/bots/{id}/migrate
 
 1. Пользователь выдаёт задания manager по одному этапу.  
 2. Backend-фазы (0–4, PG) — по плану.  
-3. UI — Phase UI / задания по [frontend.md](./frontend.md) (§14), каталог `web/`.
+3. UI — Phase UI по [FRONTEND_PLAN.md](./FRONTEND_PLAN.md) (блоки `UI-*`); ТЗ — [frontend.md](./frontend.md); каталог `web/`.

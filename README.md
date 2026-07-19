@@ -6,7 +6,7 @@
 
 Подробности ТЗ, плана и процесса работы с агентами — в [`docs/`](./docs/) ([TZ](./docs/TZ.md), [план](./docs/IMPLEMENTATION_PLAN.md), [как работать](./docs/Readme.md), [frontend / UI](./docs/frontend.md)). Handoff клиенту (single-bot) — [`docs/handoff/`](./docs/handoff/).
 
-**UI:** каталог [`web/`](./web/) в этом репозитории (monorepo). Клиент ходит только в `control-api`. Подробное ТЗ — [`docs/frontend.md`](./docs/frontend.md).
+**UI:** каталог [`web/`](./web/) в этом репозитории (monorepo). Клиент ходит только в `control-api`. ТЗ — [`docs/frontend.md`](./docs/frontend.md); план блоков (manager/developer/tester) — [`docs/FRONTEND_PLAN.md`](./docs/FRONTEND_PLAN.md).
 
 ## Сборка
 

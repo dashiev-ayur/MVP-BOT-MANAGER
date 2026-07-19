@@ -9,6 +9,7 @@
 | [TZ.md](./TZ.md) | Что строим |
 | [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) | Чеклист фаз; manager ставит `[x]` |
 | [frontend.md](./frontend.md) | ТЗ UI-админки `web/`: экраны, API-контракт, приёмка |
+| [FRONTEND_PLAN.md](./FRONTEND_PLAN.md) | План Phase UI: блоки UI-0a…UI-6, роли manager/developer/tester |
 
 Агенты: `.cursor/agents/` (`manager`, `developer`, `tester`).  
 Команда: `.cursor/commands/manager.md` → в чате **`/manager`**.

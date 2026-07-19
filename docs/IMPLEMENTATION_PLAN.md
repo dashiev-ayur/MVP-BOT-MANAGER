@@ -1,7 +1,7 @@
 # План реализации — чеклист
 
-**Версия:** 0.5  
-**Основание:** [TZ.md](./TZ.md) v0.3+  
+**Версия:** 0.6  
+**Основание:** [TZ.md](./TZ.md) v0.3+; UI — [frontend.md](./frontend.md) + [FRONTEND_PLAN.md](./FRONTEND_PLAN.md)  
 **Цель документа:** чеклист фаз для вас и для manager. Пользователь **сам** выдаёт задания и **сам** принимает этапы; целиком проект одним заданием не отдаётся (даже если MVP = все фазы).
 
 **Хранилище:** in-memory (`STORE=memory`) и PostgreSQL (`STORE=postgres`, Phase PG).
@@ -37,7 +37,7 @@
 | PG | PostgreSQL (адаптер store) | ✅ принята |
 | 3 | Типы, lease, migrate, API | ✅ принята |
 | 4 | Укрепление (hardening) | ✅ принята |
-| UI | Админка `web/` ([frontend.md](./frontend.md)) | ⏳ не начата |
+| UI | Админка `web/` ([frontend.md](./frontend.md), [FRONTEND_PLAN.md](./FRONTEND_PLAN.md)) | ⏳ не начата |
 
 *Статусы фазы: `⏳ не начата` → `🚧 в работе` → `👀 ждёт вашей проверки` → `✅ принята`.*  
 *Manager обновляет строку фазы в этой таблице.*
@@ -385,41 +385,68 @@ export STORE=postgres
 ## Phase UI — админка в `web/`
 
 **Зачем:** операторский UI поверх `control-api` (вместо повседневного `ctl`/SQL).  
-**Документ:** [frontend.md](./frontend.md)
+**ТЗ:** [frontend.md](./frontend.md)  
+**Подробный план блоков + роли агентов:** [FRONTEND_PLAN.md](./FRONTEND_PLAN.md)
 
 **Статус фазы:** ⏳ не начата  
-**Старт:** по отдельным заданиям пользователя (не одним «сделай весь UI»)
+**Старт:** по отдельным заданиям (`UI-0a` … `UI-6`); не одним «сделай весь UI».  
+**Цепочка:** вы → manager → developer → tester (≤2 доработки) → отчёт вам → «Принято вами».
 
-### UI.1. Scaffold
+### UI-0a. JSON snake_case в control-api
 
-- [ ] Каталог `web/` (стек зафиксировать в первом задании)
-- [ ] Dev-proxy / base URL → `control-api`
-- [ ] Ввод Bearer-токена (`CONTROL_API_TOKEN`)
+- [ ] Ответы Node/Bot/Runtime/BotEvent в snake_case
+- [ ] Тесты / curl-проверка контракта
+- [ ] **Принято вами**
 
-### UI.2. Read-only обзор (P0)
+### UI-0b. Scaffold `web/`
+
+- [ ] Vite + React + TypeScript в `web/`
+- [ ] Dev-proxy → control-api; `api/client` + types
+- [ ] `npm run build`; `web/README.md` с командами
+- [ ] **Принято вами**
+
+### UI-1. Auth + App shell
+
+- [ ] Login (Base URL + Bearer), session, logout, 401
+- [ ] Layout + нав; индикатор `/healthz`
+- [ ] **Принято вами**
+
+### UI-2. Read-only обзор
 
 - [ ] Список нод
-- [ ] Список ботов + фильтры
-- [ ] Карточка бота + события
-- [ ] Список runtimes (хотя бы read-only)
-- [ ] Экран обзора (сводки running/failed)
+- [ ] Список ботов + фильтры + refresh
+- [ ] Экран обзора (сводки + «требуют внимания»)
+- [ ] **Принято вами**
 
-### UI.3. Управление (P0)
+### UI-3. Карточка бота + события
 
-- [ ] Create bot
-- [ ] Start / stop
-- [ ] Migrate (выбор ноды)
+- [ ] `/bots/:id` паспорт полей
+- [ ] Лента `GET /v1/bots/{id}/events`
+- [ ] **Принято вами**
 
-### UI.4. Расширение (P1)
+### UI-4. Create + Start / Stop
 
-- [ ] PATCH / редактирование бота
-- [ ] Карточка ноды, polish UX, авто-poll
-- [ ] Запись запуска `web/` в README / frontend.md
+- [ ] Форма создания бота + валидация
+- [ ] Start / Stop (Stop с confirm); сообщение про reconcile
+- [ ] **Принято вами**
+
+### UI-5. Migrate
+
+- [ ] Dialog выбора ноды + confirm + `POST .../migrate`
+- [ ] **Принято вами**
+
+### UI-6. P1 polish
+
+- [ ] Runtimes list (+ связь с ботами)
+- [ ] Карточка ноды; PATCH/edit бота
+- [ ] Toasts + авто-poll; обновить README
+- [ ] **Принято вами**
 
 ### Закрытие Phase UI
 
-- [ ] Критерии приёмки из frontend.md §13
-- [ ] **Принято вами**
+- [ ] Критерии приёмки [frontend.md](./frontend.md) §13.1 + сценарий §13.2
+- [ ] Все нужные блоки с «Принято вами» (см. [FRONTEND_PLAN.md](./FRONTEND_PLAN.md))
+- [ ] **Принято вами** (фаза целиком)
 
 ---
 

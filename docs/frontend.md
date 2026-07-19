@@ -733,11 +733,15 @@ web/
 
 ## 14. Порядок внедрения (для `/manager`)
 
+Подробный план блоков, handoff-шаблоны и критерии tester — **[FRONTEND_PLAN.md](./FRONTEND_PLAN.md)**.  
+Чеклист статусов — [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) Phase UI.
+
 Выдавать **по одному блоку**, не «весь frontend сразу»:
 
 | Блок | Содержание |
 |---|---|
-| UI-0 | Scaffold `web/` + README запуска + (желательно) snake_case JSON в API |
+| UI-0a | snake_case JSON в ответах control-api |
+| UI-0b | Scaffold `web/` + README + api client |
 | UI-1 | Auth + shell + healthz indicator |
 | UI-2 | Nodes list + Bots list (read-only) + Overview |
 | UI-3 | Bot detail + events |
@@ -745,7 +749,7 @@ web/
 | UI-5 | Migrate |
 | UI-6 | Runtimes + edit/patch + poll/toasts (P1) |
 
-Tester проверяет блок; пользователь принимает; затем следующий.
+Цепочка: manager → developer → tester → отчёт вам → «Принято вами» → следующий блок.
 
 ---
 
@@ -772,3 +776,4 @@ Tester проверяет блок; пользователь принимает;
 |---|---|---|
 | 0.1 | 2026-07 | Краткий scope UI, фичи P0–P2, визуальный набросок |
 | 1.0 | 2026-07-19 | Полное ТЗ: модель, API, экраны, валидации, приёмка, фазы |
+| 1.0.1 | 2026-07-19 | §14 ссылается на FRONTEND_PLAN.md |
