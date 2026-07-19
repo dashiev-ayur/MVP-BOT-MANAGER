@@ -47,6 +47,91 @@ export function createBot(body: CreateBotBody, signal?: AbortSignal): Promise<Bo
   })
 }
 
+/**
+ * Тело PATCH /v1/bots/{id} — только опциональные поля (snake_case).
+ * Пустой token_ref на сервере затирает секрет: ключ в JSON только если есть новое значение.
+ */
+export type PatchBotBody = {
+  token_ref?: string
+  assigned_node_id?: string
+  scenario_config?: Record<string, unknown>
+  config_version?: number
+}
+
+/** PATCH /v1/bots/{id} → 200 + Bot DTO (masked). */
+export function patchBot(
+  id: string,
+  body: PatchBotBody,
+  signal?: AbortSignal,
+): Promise<Bot> {
+  return apiRequest<Bot>(endpoints.bot(id), {
+    method: 'PATCH',
+    body,
+    signal,
+  })
+}
+
+/**
+ * Собрать PATCH-тело только из изменённых/явно заданных полей.
+ * token_ref: пустой input → omit (иначе сервер запишет "").
+ * scenario_config: пусто или без изменений → omit; невалидный JSON → clientError.
+ */
+export function buildPatchBotBody(input: {
+  token_ref: string
+  assigned_node_id: string
+  original_assigned_node_id: string | null
+  scenario_config_text: string
+  original_scenario_config_text: string
+}): { body: PatchBotBody; clientError: string | null } {
+  const body: PatchBotBody = {}
+
+  const tokenRef = input.token_ref.trim()
+  if (tokenRef) {
+    body.token_ref = tokenRef
+  }
+
+  const nodeId = input.assigned_node_id.trim()
+  const originalNode = (input.original_assigned_node_id ?? '').trim()
+  if (nodeId !== originalNode) {
+    // Пустую строку не шлём — assigned_node_id на сервере *string; clear не в scope UI-6.2.
+    if (!nodeId) {
+      return { body: {}, clientError: 'Укажите assigned_node_id' }
+    }
+    body.assigned_node_id = nodeId
+  }
+
+  const scenarioText = input.scenario_config_text.trim()
+  const originalScenario = input.original_scenario_config_text.trim()
+  // Непустой текст: всегда валидируем JSON (в т.ч. до submit при правках).
+  // Пусто = «не менять» (omit). Явная очистка конфига — ввести {}.
+  if (scenarioText) {
+    if (scenarioText !== originalScenario) {
+      try {
+        const parsed: unknown = JSON.parse(scenarioText)
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return {
+            body: {},
+            clientError: 'scenario_config должен быть JSON-объектом',
+          }
+        }
+        body.scenario_config = parsed as Record<string, unknown>
+      } catch {
+        return { body: {}, clientError: 'Невалидный JSON в scenario_config' }
+      }
+    }
+  }
+
+  if (
+    body.token_ref === undefined &&
+    body.assigned_node_id === undefined &&
+    body.scenario_config === undefined
+  ) {
+    return { body: {}, clientError: 'Нет изменений для сохранения' }
+  }
+
+  return { body, clientError: null }
+}
+
 /** POST /v1/bots/{id}/start — тело пустое. */
 export function startBot(id: string, signal?: AbortSignal): Promise<LifecycleOk> {
   return apiRequest<LifecycleOk>(endpoints.botStart(id), {

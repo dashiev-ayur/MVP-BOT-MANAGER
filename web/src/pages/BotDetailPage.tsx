@@ -77,7 +77,7 @@ function showStopAction(bot: Bot): boolean {
 
 /**
  * Карточка бота (/bots/:id) — паспорт + Start/Stop/Migrate + события (UI-3/4/5).
- * PATCH edit — P1 (UI-6).
+ * Ссылка «Редактировать» → /bots/:id/edit (UI-6.2).
  *
  * key={id} снаружи: useFetchList не зависит от id, при смене :id нужен remount.
  */
@@ -237,6 +237,11 @@ function BotDetailBody({ id }: { id: string }) {
               >
                 Migrate…
               </button>
+            ) : null}
+            {bot ? (
+              <Link to={`/bots/${bot.id}/edit`} className="btn btn--secondary">
+                Редактировать
+              </Link>
             ) : null}
             <Link to="/bots" className="btn btn--secondary">
               К списку

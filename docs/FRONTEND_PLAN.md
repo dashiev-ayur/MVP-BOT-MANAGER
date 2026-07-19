@@ -366,9 +366,24 @@ cd web && npm install && npm run dev
 
 **Принято вами (UI-6.1):** [x] (2026-07-19)
 
-#### UI-6.2 / UI-6.3 — ещё не начаты
+#### UI-6.2 — PATCH edit бота
 
-- [ ] `/bots/:id/edit` — PATCH (token_ref, assignment, scenario_config)  
+- [x] `/bots/:id/edit` — PATCH (token_ref, assignment, scenario_config)  
+
+**Критерии tester (6.2)**
+
+- [x] build PASS  
+- [x] PATCH путь корректен; пустой token_ref не затирает секрет  
+
+**Ручная проверка (6.2)**
+
+1. Карточка → Редактировать → сохранить без нового token (секрет не сбрасывается).  
+2. Битый JSON в scenario_config → ошибка до API.
+
+**Принято вами (UI-6.2):** [x] (2026-07-19)
+
+#### UI-6.3 — ещё не начат
+
 - [ ] Toasts на успех/ошибку команд  
 - [ ] Авто-poll 3–10s на списках/карточке + «обновлено N с назад»  
 - [ ] Фильтр событий по типу (если просто)  

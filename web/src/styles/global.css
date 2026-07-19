@@ -813,7 +813,9 @@ main p {
 }
 
 .bot-form__field input,
-.bot-form__field select {
+.bot-form__field select,
+.bot-form__field textarea,
+.bot-form__textarea {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -821,10 +823,28 @@ main p {
   color: var(--color-fg);
 }
 
+.bot-form__field textarea,
+.bot-form__textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 10rem;
+}
+
 .bot-form__field input:focus,
-.bot-form__field select:focus {
+.bot-form__field select:focus,
+.bot-form__field textarea:focus,
+.bot-form__textarea:focus {
   outline: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
   outline-offset: 1px;
+}
+
+.bot-form__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  line-height: 1.4;
 }
 
 .bot-form__error {

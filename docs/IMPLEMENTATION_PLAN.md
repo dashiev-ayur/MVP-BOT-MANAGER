@@ -440,7 +440,8 @@ export STORE=postgres
 - [x] Runtimes list (+ связь с ботами) — UI-6.1
 - [x] Карточка ноды `/nodes/:id` — UI-6.1
 - [x] **Принято вами (UI-6.1)** (2026-07-19)
-- [ ] PATCH/edit бота — UI-6.2
+- [x] PATCH/edit бота — UI-6.2
+- [x] **Принято вами (UI-6.2)** (2026-07-19)
 - [ ] Toasts + авто-poll; обновить README — UI-6.3
 - [ ] **Принято вами** (весь UI-6)
 
