@@ -4,7 +4,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock, PageToolbar } from '../layout/Pag
 import { StatePill } from '../layout/StatePill'
 import { formatAbsoluteShort, formatRelativeRu } from '../lib/formatTime'
 import { shortId } from '../lib/shortId'
-import { useFetchList } from '../lib/useFetchList'
+import { DEFAULT_POLL_INTERVAL_MS, useFetchList } from '../lib/useFetchList'
 
 /**
  * Список нод (/nodes) — read-only таблица.
@@ -12,7 +12,9 @@ import { useFetchList } from '../lib/useFetchList'
  */
 export function NodesListPage() {
   const navigate = useNavigate()
-  const { data, error, loading, refresh } = useFetchList(listNodes)
+  const { data, error, loading, refresh, updatedAt } = useFetchList(listNodes, {
+    pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+  })
   const nodes = data ?? []
   const showInitial = loading && data === null
 
@@ -22,6 +24,7 @@ export function NodesListPage() {
         title="Ноды"
         onRefresh={refresh}
         refreshing={loading && data !== null}
+        updatedAt={updatedAt}
       />
 
       {error ? <ErrorBlock message={error} onRetry={refresh} /> : null}

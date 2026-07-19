@@ -5,7 +5,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock, PageToolbar } from '../layout/Pag
 import { StatePill } from '../layout/StatePill'
 import { formatAbsoluteShort, isLeaseExpired } from '../lib/formatTime'
 import { shortId } from '../lib/shortId'
-import { useFetchList } from '../lib/useFetchList'
+import { DEFAULT_POLL_INTERVAL_MS, useFetchList } from '../lib/useFetchList'
 
 type RuntimesSnapshot = {
   runtimes: Runtime[]
@@ -32,7 +32,9 @@ function botsByRuntimeHref(runtimeId: string): string {
  */
 export function RuntimesPage() {
   const navigate = useNavigate()
-  const { data, error, loading, refresh } = useFetchList(fetchRuntimesSnapshot)
+  const { data, error, loading, refresh, updatedAt } = useFetchList(fetchRuntimesSnapshot, {
+    pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+  })
   const runtimes = data?.runtimes ?? []
   const nodesById = data?.nodesById ?? new Map<string, Node>()
   const showInitial = loading && data === null
@@ -43,6 +45,7 @@ export function RuntimesPage() {
         title="Runtimes"
         onRefresh={refresh}
         refreshing={loading && data !== null}
+        updatedAt={updatedAt}
       />
 
       {error ? <ErrorBlock message={error} onRetry={refresh} /> : null}

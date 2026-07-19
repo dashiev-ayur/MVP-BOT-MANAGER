@@ -93,7 +93,21 @@ VITE_CONTROL_API_URL=http://127.0.0.1:8080 npm run dev
 Если указать `http://127.0.0.1:8080` напрямую — нужен CORS на control-api (уже включён)
 или тот же пустой Base URL (UI сам сведёт localhost:8080 к proxy).
 
-Маршруты: `/login`, `/`, `/bots`, `/bots/new`, `/bots/:id`, `/nodes`, `/runtimes`.
+Маршруты:
+
+| Путь | Экран |
+|---|---|
+| `/login` | вход (Bearer) |
+| `/` | обзор |
+| `/bots` | список ботов |
+| `/bots/new` | создать бота |
+| `/bots/:id` | карточка бота (Start/Stop/Migrate) |
+| `/bots/:id/edit` | PATCH-редактирование |
+| `/nodes` | список нод |
+| `/nodes/:id` | карточка ноды |
+| `/runtimes` | список runtimes |
+
+**UX (P1):** на списках (обзор/боты/ноды/runtimes) и карточке бота — авто-poll ~5s без мигания таблицы и индикатор «Обновлено N с назад»; на команды (start/stop/migrate/create/patch) — toasts об успехе/ошибке.
 
 ## Сборка и preview
 
@@ -112,5 +126,7 @@ src/
   auth/      # session + LoginPage
   layout/    # AppShell, health indicator
   pages/     # обзор, боты, ноды, runtimes, карточка
+  toast/     # простой стек toasts (без внешней lib)
+  lib/       # useFetchList (+ poll), formatters
   styles/    # tokens + global
 ```

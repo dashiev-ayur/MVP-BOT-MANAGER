@@ -6,6 +6,7 @@ import { buildCreateBotBody, createBot } from '../api/mutations'
 import type { BotChannel, BotRunMode, BotType, DesiredState } from '../api/types'
 import { ErrorBlock, LoadingBlock, PageToolbar } from '../layout/PageStates'
 import { useFetchList } from '../lib/useFetchList'
+import { useToast } from '../toast/ToastContext'
 
 const BOT_TYPE_OPTIONS: BotType[] = ['default', 'default_extended', 'custom']
 const CHANNEL_OPTIONS: BotChannel[] = ['telegram', 'max']
@@ -90,6 +91,7 @@ function validateForm(form: FormState, occupiedPorts: Set<number>): string | nul
  */
 export function BotCreatePage() {
   const navigate = useNavigate()
+  const toast = useToast()
   const snapshot = useFetchList(fetchCreateSnapshot)
 
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
@@ -142,14 +144,18 @@ export function BotCreatePage() {
     setSubmitting(true)
     try {
       const bot = await createBot(body)
+      toast.success(`Бот «${bot.name}» создан`)
       navigate(`/bots/${bot.id}`)
     } catch (err) {
       // 400/409 и прочие — текст error из ApiError (без токена).
-      if (err instanceof ApiError) {
-        setApiError(err.message)
-      } else {
-        setApiError(err instanceof Error ? err.message : 'Не удалось создать бота')
-      }
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Не удалось создать бота'
+      setApiError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }

@@ -4,7 +4,7 @@ import type { ActualState, Bot, Node, Runtime, RuntimeKind } from '../api/types'
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageToolbar } from '../layout/PageStates'
 import { StatePill } from '../layout/StatePill'
 import { shortId } from '../lib/shortId'
-import { useFetchList } from '../lib/useFetchList'
+import { DEFAULT_POLL_INTERVAL_MS, useFetchList } from '../lib/useFetchList'
 
 type OverviewSnapshot = {
   nodes: Node[]
@@ -26,7 +26,9 @@ async function fetchOverview(signal: AbortSignal): Promise<OverviewSnapshot> {
  * Только GET; клики ведут на списки/карточку.
  */
 export function OverviewPage() {
-  const { data, error, loading, refresh } = useFetchList(fetchOverview)
+  const { data, error, loading, refresh, updatedAt } = useFetchList(fetchOverview, {
+    pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+  })
   const showInitial = loading && data === null
 
   const nodes = data?.nodes ?? []
@@ -55,6 +57,7 @@ export function OverviewPage() {
         title="Обзор"
         onRefresh={refresh}
         refreshing={loading && data !== null}
+        updatedAt={updatedAt}
       />
 
       {error ? <ErrorBlock message={error} onRetry={refresh} /> : null}

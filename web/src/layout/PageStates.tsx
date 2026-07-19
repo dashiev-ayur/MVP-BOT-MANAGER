@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { formatUpdatedAgo } from '../lib/formatUpdatedAgo'
 
 type LoadingBlockProps = {
   label?: string
@@ -52,15 +53,29 @@ type PageToolbarProps = {
   title: string
   onRefresh: () => void
   refreshing?: boolean
+  /**
+   * Epoch последнего успешного fetch — индикатор «Обновлено N с назад» (§7.11).
+   * Без значения (ещё не загрузили) — ничего не показываем.
+   */
+  updatedAt?: number | null
   /** Доп. действия справа (создать и т.п.). */
   actions?: ReactNode
 }
 
-/** Заголовок страницы + «Обновить» (+ опциональные actions). */
-export function PageToolbar({ title, onRefresh, refreshing, actions }: PageToolbarProps) {
+/** Заголовок страницы + stale + «Обновить» (+ опциональные actions). */
+export function PageToolbar({
+  title,
+  onRefresh,
+  refreshing,
+  updatedAt,
+  actions,
+}: PageToolbarProps) {
   return (
     <div className="page-toolbar">
-      <h1 className="page-toolbar__title">{title}</h1>
+      <div className="page-toolbar__heading">
+        <h1 className="page-toolbar__title">{title}</h1>
+        {updatedAt != null ? <StaleAge updatedAt={updatedAt} /> : null}
+      </div>
       <div className="page-toolbar__actions">
         <button
           type="button"
@@ -73,5 +88,25 @@ export function PageToolbar({ title, onRefresh, refreshing, actions }: PageToolb
         {actions}
       </div>
     </div>
+  )
+}
+
+type StaleAgeProps = {
+  updatedAt: number
+}
+
+/** Тикающий stale-индикатор без мигания таблицы (UI-6.3 / §7.11). */
+function StaleAge({ updatedAt }: StaleAgeProps) {
+  const [nowMs, setNowMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  return (
+    <span className="stale-age" role="status">
+      {formatUpdatedAgo(updatedAt, nowMs)}
+    </span>
   )
 }

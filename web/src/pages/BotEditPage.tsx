@@ -7,6 +7,7 @@ import type { Bot, Node } from '../api/types'
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageToolbar } from '../layout/PageStates'
 import { shortId } from '../lib/shortId'
 import { useFetchList } from '../lib/useFetchList'
+import { useToast } from '../toast/ToastContext'
 
 type EditSnapshot = {
   bots: Bot[]
@@ -114,6 +115,7 @@ type EditFormState = {
  */
 function BotEditForm({ bot, nodes }: BotEditFormProps) {
   const navigate = useNavigate()
+  const toast = useToast()
   const originalScenarioText = formatScenarioConfigText(bot.scenario_config)
 
   const [form, setForm] = useState<EditFormState>(() => ({
@@ -153,13 +155,17 @@ function BotEditForm({ bot, nodes }: BotEditFormProps) {
     try {
       // Ответ API с masked token_ref — на карточку, plaintext не логируем.
       const updated = await patchBot(bot.id, body)
+      toast.success(`Бот «${updated.name}» сохранён`)
       navigate(`/bots/${updated.id}`)
     } catch (err) {
-      if (err instanceof ApiError) {
-        setApiError(err.message)
-      } else {
-        setApiError(err instanceof Error ? err.message : 'Не удалось сохранить бота')
-      }
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Не удалось сохранить бота'
+      setApiError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }

@@ -16,7 +16,7 @@ import {
   type BotFilters,
 } from '../lib/botFilters'
 import { shortId } from '../lib/shortId'
-import { useFetchList } from '../lib/useFetchList'
+import { DEFAULT_POLL_INTERVAL_MS, useFetchList } from '../lib/useFetchList'
 
 type BotsSnapshot = {
   bots: Bot[]
@@ -40,7 +40,9 @@ export function BotsListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const filters = useMemo(() => parseBotFilters(searchParams), [searchParams])
 
-  const { data, error, loading, refresh } = useFetchList(fetchBotsSnapshot)
+  const { data, error, loading, refresh, updatedAt } = useFetchList(fetchBotsSnapshot, {
+    pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+  })
   const bots = data?.bots ?? []
   const nodesById = data?.nodesById ?? new Map<string, Node>()
   const visible = useMemo(() => filterBots(bots, filters), [bots, filters])
@@ -88,6 +90,7 @@ export function BotsListPage() {
         title="Боты"
         onRefresh={refresh}
         refreshing={loading && data !== null}
+        updatedAt={updatedAt}
         actions={
           <Link to="/bots/new" className="btn btn--primary">
             Создать

@@ -10,7 +10,8 @@ import { EmptyBlock, ErrorBlock, LoadingBlock, PageToolbar } from '../layout/Pag
 import { StatePill } from '../layout/StatePill'
 import { formatAbsoluteShort, formatRelativeRu } from '../lib/formatTime'
 import { shortId } from '../lib/shortId'
-import { useFetchList } from '../lib/useFetchList'
+import { DEFAULT_POLL_INTERVAL_MS, useFetchList } from '../lib/useFetchList'
+import { useToast } from '../toast/ToastContext'
 
 type DetailSnapshot = {
   bots: Bot[]
@@ -61,6 +62,15 @@ function sortEventsNewestFirst(events: BotEvent[]): BotEvent[] {
   })
 }
 
+/** Уникальные type из ленты — опции client-side фильтра. */
+function collectEventTypes(events: BotEvent[]): string[] {
+  const set = new Set<string>()
+  for (const ev of events) {
+    if (ev.type) set.add(ev.type)
+  }
+  return [...set].sort()
+}
+
 /** Start: desired≠running (перезапрос running — когда уже running, кнопка скрыта). */
 function showStartAction(bot: Bot): boolean {
   return bot.desired_state !== 'running'
@@ -78,6 +88,7 @@ function showStopAction(bot: Bot): boolean {
 /**
  * Карточка бота (/bots/:id) — паспорт + Start/Stop/Migrate + события (UI-3/4/5).
  * Ссылка «Редактировать» → /bots/:id/edit (UI-6.2).
+ * Авто-poll + toasts команд (UI-6.3).
  *
  * key={id} снаружи: useFetchList не зависит от id, при смене :id нужен remount.
  */
@@ -93,14 +104,17 @@ function hasMigrateTargets(nodes: Node[], assignedNodeId: string | null): boolea
 }
 
 function BotDetailBody({ id }: { id: string }) {
-  const passport = useFetchList(fetchDetailSnapshot)
-  const eventsState = useFetchList((signal) => listBotEvents(id, signal))
+  const toast = useToast()
+  const passport = useFetchList(fetchDetailSnapshot, {
+    pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+  })
+  const eventsState = useFetchList((signal) => listBotEvents(id, signal), {
+    pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+  })
 
   const [actionBusy, setActionBusy] = useState<'start' | 'stop' | 'migrate' | null>(null)
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
   const [migrateConfirmOpen, setMigrateConfirmOpen] = useState(false)
-  const [actionInfo, setActionInfo] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
 
   const showPassportInitial = passport.loading && passport.data === null
   const bot = passport.data?.bots.find((b) => b.id === id) ?? null
@@ -124,40 +138,49 @@ function BotDetailBody({ id }: { id: string }) {
     (passport.loading && passport.data !== null) ||
     (eventsState.loading && eventsState.data !== null)
 
+  // Для stale берём более свежий из двух источников (паспорт / events).
+  const updatedAt = useMemo(() => {
+    const a = passport.updatedAt
+    const b = eventsState.updatedAt
+    if (a == null) return b
+    if (b == null) return a
+    return Math.max(a, b)
+  }, [passport.updatedAt, eventsState.updatedAt])
+
   async function runStart() {
-    setActionError(null)
-    setActionInfo(null)
     setActionBusy('start')
     try {
       await startBot(id)
-      setActionInfo('Команда принята; actual обновится после reconcile')
+      toast.success('Команда Start принята; actual обновится после reconcile')
       refreshAll()
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message)
-      } else {
-        setActionError(err instanceof Error ? err.message : 'Не удалось выполнить Start')
-      }
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Не удалось выполнить Start'
+      toast.error(message)
     } finally {
       setActionBusy(null)
     }
   }
 
   async function runStop() {
-    setActionError(null)
-    setActionInfo(null)
     setActionBusy('stop')
     try {
       await stopBot(id)
       setStopConfirmOpen(false)
-      setActionInfo('Команда принята; actual обновится после reconcile')
+      toast.success('Команда Stop принята; actual обновится после reconcile')
       refreshAll()
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message)
-      } else {
-        setActionError(err instanceof Error ? err.message : 'Не удалось выполнить Stop')
-      }
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Не удалось выполнить Stop'
+      toast.error(message)
     } finally {
       setActionBusy(null)
     }
@@ -168,22 +191,22 @@ function BotDetailBody({ id }: { id: string }) {
     if (!toNodeId) {
       return
     }
-    setActionError(null)
-    setActionInfo(null)
     setActionBusy('migrate')
     try {
       await migrateBot(id, toNodeId)
       setMigrateConfirmOpen(false)
-      setActionInfo(
-        'Команда migrate принята; actual станет migrating, затем обновится после reconcile',
+      toast.success(
+        'Команда Migrate принята; actual станет migrating, затем обновится после reconcile',
       )
       refreshAll()
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(err.message)
-      } else {
-        setActionError(err instanceof Error ? err.message : 'Не удалось выполнить Migrate')
-      }
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Не удалось выполнить Migrate'
+      toast.error(message)
     } finally {
       setActionBusy(null)
     }
@@ -195,6 +218,7 @@ function BotDetailBody({ id }: { id: string }) {
         title={bot ? bot.name : 'Бот'}
         onRefresh={refreshAll}
         refreshing={refreshing}
+        updatedAt={updatedAt}
         actions={
           <>
             {bot && showStartAction(bot) ? (
@@ -211,10 +235,7 @@ function BotDetailBody({ id }: { id: string }) {
               <button
                 type="button"
                 className="btn btn--danger"
-                onClick={() => {
-                  setActionError(null)
-                  setStopConfirmOpen(true)
-                }}
+                onClick={() => setStopConfirmOpen(true)}
                 disabled={actionBusy !== null}
               >
                 Stop
@@ -224,10 +245,7 @@ function BotDetailBody({ id }: { id: string }) {
               <button
                 type="button"
                 className="btn btn--secondary"
-                onClick={() => {
-                  setActionError(null)
-                  setMigrateConfirmOpen(true)
-                }}
+                onClick={() => setMigrateConfirmOpen(true)}
                 disabled={actionBusy !== null || !canMigrate}
                 title={
                   canMigrate
@@ -264,18 +282,6 @@ function BotDetailBody({ id }: { id: string }) {
       {bot && !canMigrate && nodes.length === 0 && !showPassportInitial ? (
         <p className="bot-action-info" role="status">
           Migrate недоступен: список нод пуст.
-        </p>
-      ) : null}
-
-      {actionError ? (
-        <div className="page-state page-state--error" role="alert">
-          <p className="page-state__message">{actionError}</p>
-        </div>
-      ) : null}
-
-      {actionInfo ? (
-        <p className="bot-action-info" role="status">
-          {actionInfo}
         </p>
       ) : null}
 
@@ -475,23 +481,48 @@ type BotEventsSectionProps = {
   onRefresh: () => void
 }
 
-/** Лента GET /v1/bots/{id}/events: at · type · message; новые сверху. */
+/** Лента GET /v1/bots/{id}/events: at · type · message; фильтр по type client-side. */
 function BotEventsSection({ events, error, loading, onRefresh }: BotEventsSectionProps) {
+  const [typeFilter, setTypeFilter] = useState('')
   const showInitial = loading && events === null
   const sorted = events ? sortEventsNewestFirst(events) : []
+  const typeOptions = useMemo(() => collectEventTypes(sorted), [sorted])
+  const visible = useMemo(() => {
+    if (!typeFilter) return sorted
+    return sorted.filter((ev) => ev.type === typeFilter)
+  }, [sorted, typeFilter])
 
   return (
     <section className="bot-events" aria-label="События бота">
       <div className="bot-events__toolbar">
         <h2 className="bot-events__title">События</h2>
-        <button
-          type="button"
-          className="btn btn--secondary"
-          onClick={onRefresh}
-          disabled={loading && events !== null}
-        >
-          {loading && events !== null ? 'Обновление…' : 'Обновить'}
-        </button>
+        <div className="bot-events__filters">
+          {typeOptions.length > 0 ? (
+            <label>
+              <span>тип</span>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                aria-label="Фильтр событий по типу"
+              >
+                <option value="">все</option>
+                {typeOptions.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={onRefresh}
+            disabled={loading && events !== null}
+          >
+            {loading && events !== null ? 'Обновление…' : 'Обновить'}
+          </button>
+        </div>
       </div>
 
       {error ? <ErrorBlock message={error} onRetry={onRefresh} /> : null}
@@ -502,7 +533,22 @@ function BotEventsSection({ events, error, loading, onRefresh }: BotEventsSectio
         <EmptyBlock message="Событий пока нет" />
       ) : null}
 
-      {!showInitial && sorted.length > 0 ? (
+      {!showInitial && sorted.length > 0 && visible.length === 0 ? (
+        <EmptyBlock
+          message="Нет событий выбранного типа"
+          action={
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => setTypeFilter('')}
+            >
+              Сбросить фильтр
+            </button>
+          }
+        />
+      ) : null}
+
+      {!showInitial && visible.length > 0 ? (
         <div className="table-wrap">
           <table className="data-table bot-events__table">
             <thead>
@@ -513,7 +559,7 @@ function BotEventsSection({ events, error, loading, onRefresh }: BotEventsSectio
               </tr>
             </thead>
             <tbody>
-              {sorted.map((ev) => (
+              {visible.map((ev) => (
                 <tr key={ev.id}>
                   <td className="mono" title={formatAbsoluteShort(ev.at)}>
                     <time dateTime={ev.at}>{formatRelativeRu(ev.at)}</time>
