@@ -72,15 +72,16 @@ Store (интерфейс)
 | CLI `ctl` | Операции из терминала без ручного SQL |
 | Healthcheck | Отдельный `cmd/healthcheck` для `/healthz` webhook-ботов |
 | Контракт запуска | Единый ENV/команда для custom и для single-bot выдачи клиенту |
+| UI-админка | Каталог `web/` в monorepo; клиент только к `control-api` — см. [frontend.md](./frontend.md) |
 | Логи | slog в каждом бинарнике |
 
 ### 3.2. Out of scope (v1)
 
 - Авто-failover при падении ноды
-- UI-админка
 - Vault секретов (токены — в БД/ENV с оговоркой на prod)
 - Автосборка custom из git на агенте (MVP: CI кладёт готовый артефакт на ноду)
 - Windows-агент
+- Визуальный конструктор сценариев бота / RBAC в UI (см. [frontend.md](./frontend.md) §2.2)
 
 ---
 
@@ -710,6 +711,7 @@ POST /v1/bots/{id}/migrate
 | `/healthz` ботов | Отдельный `cmd/healthcheck`; рестарт только в `agent` |
 | HTTP API | `cmd/control-api` (не смешивать с ядром агента) |
 | CLI | `cmd/ctl` |
+| UI | Monorepo: каталог **`web/`**; только `control-api`; ТЗ — [frontend.md](./frontend.md) |
 | Handoff | Исходники Go/Node + launch contract; утилита `cmd/handoff` позже |
 | Go-модуль | `mvp-manager` |
 | `bot-runner` | Monorepo: `cmd/bot-runner` + `internal/runner` |
@@ -723,6 +725,5 @@ POST /v1/bots/{id}/migrate
 ## 19. Дальнейшие шаги
 
 1. Пользователь выдаёт задания manager по одному этапу.  
-2. Phase 0–2 на **memory** store.  
-3. Phase PG — когда будут инструкции по БД.  
-4. Phase 3–4 с ручной приёмкой.
+2. Backend-фазы (0–4, PG) — по плану.  
+3. UI — Phase UI / задания по [frontend.md](./frontend.md) (§14), каталог `web/`.

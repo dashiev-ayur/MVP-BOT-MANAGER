@@ -37,6 +37,7 @@
 | PG | PostgreSQL (адаптер store) | ✅ принята |
 | 3 | Типы, lease, migrate, API | ✅ принята |
 | 4 | Укрепление (hardening) | ✅ принята |
+| UI | Админка `web/` ([frontend.md](./frontend.md)) | ⏳ не начата |
 
 *Статусы фазы: `⏳ не начата` → `🚧 в работе` → `👀 ждёт вашей проверки` → `✅ принята`.*  
 *Manager обновляет строку фазы в этой таблице.*
@@ -381,14 +382,57 @@ export STORE=postgres
 
 ---
 
+## Phase UI — админка в `web/`
+
+**Зачем:** операторский UI поверх `control-api` (вместо повседневного `ctl`/SQL).  
+**Документ:** [frontend.md](./frontend.md)
+
+**Статус фазы:** ⏳ не начата  
+**Старт:** по отдельным заданиям пользователя (не одним «сделай весь UI»)
+
+### UI.1. Scaffold
+
+- [ ] Каталог `web/` (стек зафиксировать в первом задании)
+- [ ] Dev-proxy / base URL → `control-api`
+- [ ] Ввод Bearer-токена (`CONTROL_API_TOKEN`)
+
+### UI.2. Read-only обзор (P0)
+
+- [ ] Список нод
+- [ ] Список ботов + фильтры
+- [ ] Карточка бота + события
+- [ ] Список runtimes (хотя бы read-only)
+- [ ] Экран обзора (сводки running/failed)
+
+### UI.3. Управление (P0)
+
+- [ ] Create bot
+- [ ] Start / stop
+- [ ] Migrate (выбор ноды)
+
+### UI.4. Расширение (P1)
+
+- [ ] PATCH / редактирование бота
+- [ ] Карточка ноды, polish UX, авто-poll
+- [ ] Запись запуска `web/` в README / frontend.md
+
+### Закрытие Phase UI
+
+- [ ] Критерии приёмки из frontend.md §13
+- [ ] **Принято вами**
+
+---
+
 ## Backlog (после принятых фаз)
 
-Задачи вне закрытого MVP; брать отдельным `/manager`, не смешивать с уже принятыми фазами.
+Задачи вне закрытых backend-фаз; брать отдельным `/manager`, не смешивать с уже принятыми фазами.
 
 | TODO | Суть | Зачем |
 |---|---|---|
 | Unhealthy → reload инстанса | Healthcheck помечает одного webhook → runner перезапускает **только** этот бот (remove/add или bump `config_version`); Stop+Start всего `bot_runner` оставить для краша PID / массовых фейлов | Не гасить соседние default при одном unhealthy |
 | Multi-runner sharding | Несколько `bot_runner` на ноде, раздача ботов по `runtime_id` | Меньший blast radius и нагрузка при многих default |
+
+## Зафиксированные решения
 
 | Вопрос | Решение | Дата |
 |---|---|---|
@@ -398,6 +442,7 @@ export STORE=postgres
 | Кто выдаёт задания | Пользователь сам | 2026-07-17 |
 | Хранилище на старте | **In-memory** за интерфейсами (`internal/store`); бизнес-логика не зависит от Postgres | 2026-07-17 |
 | PostgreSQL | **Phase PG**; `docker compose up -d`; миграции и сиды — ручные команды; без `clients`; сиды 2+1 default; e2e — **отдельная БД** (`DATABASE_URL_E2E`), не schema | 2026-07-17 |
+| UI | Monorepo: каталог **`web/`**; только `control-api`; ТЗ — [frontend.md](./frontend.md) | 2026-07-19 |
 
 ---
 

@@ -4,7 +4,9 @@
 
 Хранилище выбирается конфигом: **`STORE=postgres`** (Docker Compose + goose; так в `.env.example`) или **`STORE=memory`** (JSON-файл; memory e2e задают явно). Бизнес-логика (reconcile/supervisor/runner/ops) от драйвера БД не зависит.
 
-Подробности ТЗ, плана и процесса работы с агентами — в [`docs/`](./docs/) ([TZ](./docs/TZ.md), [план](./docs/IMPLEMENTATION_PLAN.md), [как работать](./docs/Readme.md)). Handoff клиенту (single-bot) — [`docs/handoff/`](./docs/handoff/).
+Подробности ТЗ, плана и процесса работы с агентами — в [`docs/`](./docs/) ([TZ](./docs/TZ.md), [план](./docs/IMPLEMENTATION_PLAN.md), [как работать](./docs/Readme.md), [frontend / UI](./docs/frontend.md)). Handoff клиенту (single-bot) — [`docs/handoff/`](./docs/handoff/).
+
+**UI:** каталог [`web/`](./web/) в этом репозитории (monorepo). Клиент ходит только в `control-api`. Подробное ТЗ — [`docs/frontend.md`](./docs/frontend.md).
 
 ## Сборка
 

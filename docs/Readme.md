@@ -8,6 +8,7 @@
 |---|---|
 | [TZ.md](./TZ.md) | Что строим |
 | [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) | Чеклист фаз; manager ставит `[x]` |
+| [frontend.md](./frontend.md) | ТЗ UI-админки `web/`: экраны, API-контракт, приёмка |
 
 Агенты: `.cursor/agents/` (`manager`, `developer`, `tester`).  
 Команда: `.cursor/commands/manager.md` → в чате **`/manager`**.
