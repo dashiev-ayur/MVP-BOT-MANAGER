@@ -407,9 +407,9 @@ export STORE=postgres
 
 ### UI-1. Auth + App shell
 
-- [ ] Login (Base URL + Bearer), session, logout, 401
-- [ ] Layout + нав; индикатор `/healthz`
-- [ ] **Принято вами**
+- [x] Login (Base URL + Bearer), session, logout, 401
+- [x] Layout + нав; индикатор `/healthz`
+- [x] **Принято вами** (2026-07-19)
 
 ### UI-2. Read-only обзор
 

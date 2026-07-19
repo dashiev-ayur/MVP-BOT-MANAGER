@@ -654,8 +654,8 @@ web/
 ### P0 — первый usable UI
 
 - [x] Scaffold Vite+React+TS в `web/` (UI-0b, 2026-07-19)  
-- [ ] Login (URL + token) + session  
-- [ ] App shell + индикатор `/healthz`  
+- [x] Login (URL + token) + session (UI-1, 2026-07-19)  
+- [x] App shell + индикатор `/healthz` (UI-1, 2026-07-19)  
 - [ ] Обзор (сводки + проблемы)  
 - [ ] Список ботов + фильтры + refresh  
 - [ ] Карточка бота + events  

@@ -1,4 +1,5 @@
-import { getSession } from '../auth/session'
+import { clearSession, getSession } from '../auth/session'
+import { endpoints } from './endpoints'
 import type { ApiErrorBody } from './types'
 
 /** Ошибка HTTP-ответа control-api (без логирования секретов). */
@@ -40,6 +41,26 @@ export type RequestOptions = {
   /** Если false — не добавлять Authorization (для /healthz). */
   auth?: boolean
   signal?: AbortSignal
+  /**
+   * Переопределить base URL на один запрос (проверка при логине до saveSession).
+   * Пустая строка = same-origin / proxy.
+   */
+  baseUrl?: string
+  /**
+   * Переопределить Bearer-токен на один запрос (пробный вход).
+   * При явном token 401 не сбрасывает сохранённую сессию.
+   */
+  token?: string
+}
+
+/** Колбэк на 401 из сохранённой сессии (редирект на /login). Токен не передаём. */
+type UnauthorizedHandler = () => void
+
+let unauthorizedHandler: UnauthorizedHandler | null = null
+
+/** Зарегистрировать обработчик 401 (вызывать из auth-слоя / App). */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler
 }
 
 /**
@@ -50,31 +71,58 @@ export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = 'GET', body, auth = true, signal } = options
+  const {
+    method = 'GET',
+    body,
+    auth = true,
+    signal,
+    baseUrl: baseUrlOverride,
+    token: tokenOverride,
+  } = options
   const headers = new Headers()
 
   if (body !== undefined) {
     headers.set('Content-Type', 'application/json')
   }
 
+  // Пробный логин передаёт token явно; иначе берём из session.
   if (auth) {
-    const token = getSession()?.token
+    const token = tokenOverride ?? getSession()?.token
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
   }
 
-  const url = `${getBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`
+  const base =
+    baseUrlOverride !== undefined
+      ? stripTrailingSlash(baseUrlOverride)
+      : getBaseUrl()
+  const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
-  })
+  let response: Response
+  try {
+    // cache: 'no-store' — иначе браузер может отдать закэшированный GET /healthz
+    // и индикатор API останется online после остановки control-api.
+    response = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+      cache: 'no-store',
+    })
+  } catch (err) {
+    // Сеть / CORS / DNS — без деталей URL с возможными секретами в query.
+    const reason = err instanceof Error ? err.message : 'network error'
+    throw new ApiError(0, `Сеть недоступна: ${reason}`)
+  }
 
   if (!response.ok) {
     const message = await readErrorMessage(response)
+    // 401 на запросе с сохранённой сессией (не пробный логин с token override).
+    if (response.status === 401 && auth && tokenOverride === undefined) {
+      clearSession()
+      unauthorizedHandler?.()
+    }
     throw new ApiError(response.status, message)
   }
 
@@ -98,4 +146,19 @@ async function readErrorMessage(response: Response): Promise<string> {
     // не JSON — ниже fallback
   }
   return `HTTP ${response.status}`
+}
+
+/**
+ * GET /healthz: ожидает text/plain «ok» (как control-api).
+ * Отсекает закэшированный HTML или чужой 200.
+ */
+export async function checkHealthz(options: Pick<RequestOptions, 'baseUrl' | 'signal'> = {}): Promise<void> {
+  const body = await apiRequest<string>(endpoints.healthz, {
+    auth: false,
+    baseUrl: options.baseUrl,
+    signal: options.signal,
+  })
+  if (typeof body !== 'string' || body.trim() !== 'ok') {
+    throw new ApiError(0, 'unexpected healthz body')
+  }
 }

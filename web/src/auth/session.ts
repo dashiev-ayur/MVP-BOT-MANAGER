@@ -1,6 +1,6 @@
 /**
- * Заглушка сессии (localStorage).
- * Полноценный login UX — UI-1; здесь только чтение/запись для api/client.
+ * Сессия оператора в localStorage: base URL + Bearer token.
+ * Токен не логировать и не включать в сообщения об ошибках.
  */
 
 const STORAGE_KEY = 'mvp-manager.session'
@@ -12,6 +12,11 @@ export type Session = {
   token: string
 }
 
+/** Есть ли сохранённая сессия с непустым токеном. */
+export function hasSession(): boolean {
+  return getSession() !== null
+}
+
 /** Прочитать сессию из localStorage; при битых данных — null. */
 export function getSession(): Session | null {
   try {
@@ -20,7 +25,8 @@ export function getSession(): Session | null {
       return null
     }
     const parsed = JSON.parse(raw) as Partial<Session>
-    if (typeof parsed.token !== 'string') {
+    // Пустой токен не считаем валидной сессией.
+    if (typeof parsed.token !== 'string' || parsed.token.length === 0) {
       return null
     }
     return {
@@ -32,12 +38,23 @@ export function getSession(): Session | null {
   }
 }
 
-/** Сохранить сессию (UI-1 будет вызывать после успешного входа). */
+/** Сохранить сессию после успешного входа. */
 export function saveSession(session: Session): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
 }
 
-/** Сбросить сессию (например после 401). */
+/** Сбросить сессию (Выйти или 401). */
 export function clearSession(): void {
   localStorage.removeItem(STORAGE_KEY)
+}
+
+/**
+ * Маска токена для шапки (без полного секрета).
+ * Показываем только намёк, что сессия есть.
+ */
+export function maskToken(token: string): string {
+  if (token.length <= 4) {
+    return '••••'
+  }
+  return `••••${token.slice(-4)}`
 }

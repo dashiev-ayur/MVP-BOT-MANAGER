@@ -186,22 +186,22 @@ cd web && npm install && npm run dev
 
 **Сделать**
 
-- [ ] `/login`: Base URL + Bearer token; проверка healthz + пробный `/v1/nodes` или `/v1/bots`  
-- [ ] Session в localStorage; «Выйти» чистит сессию  
-- [ ] `401` → возврат на login / понятное сообщение  
-- [ ] AppShell: нав Обзор / Боты / Ноды / Runtimes (Runtimes может вести на заглушку до UI-6)  
-- [ ] Индикатор API (poll `/healthz` или по запросам): online / offline  
-- [ ] Защита маршрутов: без сессии только `/login`  
-- [ ] UI-строки на русском  
+- [x] `/login`: Base URL + Bearer token; проверка healthz + пробный `/v1/nodes` или `/v1/bots`  
+- [x] Session в localStorage; «Выйти» чистит сессию  
+- [x] `401` → возврат на login / понятное сообщение  
+- [x] AppShell: нав Обзор / Боты / Ноды / Runtimes (Runtimes может вести на заглушку до UI-6)  
+- [x] Индикатор API (poll `/healthz` или по запросам): online / offline  
+- [x] Защита маршрутов: без сессии только `/login`  
+- [x] UI-строки на русском  
 
 **Не делать:** списки данных (кроме пробного запроса на login); create/start.
 
 **Критерии tester**
 
-- [ ] build PASS  
-- [ ] без токена защищённые route редиректят на login  
-- [ ] неверный токен → ошибка, не «тихий» пустой layout  
-- [ ] верный токен → попадание в shell  
+- [x] build PASS  
+- [x] без токена защищённые route редиректят на login  
+- [x] неверный токен → ошибка, не «тихий» пустой layout  
+- [x] верный токен → попадание в shell  
 
 **Ручная проверка**
 
@@ -211,7 +211,7 @@ cd web && npm install && npm run dev
 4. Выйти → снова login.  
 5. Остановить control-api → индикатор/баннер показывают проблему.
 
-**Принято вами:** [ ]
+**Принято вами:** [x] (2026-07-19)
 
 ---
 
