@@ -420,9 +420,9 @@ export STORE=postgres
 
 ### UI-3. Карточка бота + события
 
-- [ ] `/bots/:id` паспорт полей
-- [ ] Лента `GET /v1/bots/{id}/events`
-- [ ] **Принято вами**
+- [x] `/bots/:id` паспорт полей
+- [x] Лента `GET /v1/bots/{id}/events`
+- [x] **Принято вами** (2026-07-19)
 
 ### UI-4. Create + Start / Stop
 

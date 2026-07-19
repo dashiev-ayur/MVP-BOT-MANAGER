@@ -256,19 +256,19 @@ cd web && npm install && npm run dev
 
 **Сделать**
 
-- [ ] `/bots/:id` — все ключевые поля; desired/actual крупно; last_error плашкой  
-- [ ] `token_ref` только masked (как отдал API)  
-- [ ] Лента `GET /v1/bots/{id}/events`  
-- [ ] 404/нет в list → понятное «не найден»  
-- [ ] Ссылка назад к списку; ссылки на node/runtime если есть id  
+- [x] `/bots/:id` — все ключевые поля; desired/actual крупно; last_error плашкой  
+- [x] `token_ref` только masked (как отдал API)  
+- [x] Лента `GET /v1/bots/{id}/events`  
+- [x] 404/нет в list → понятное «не найден»  
+- [x] Ссылка назад к списку; ссылки на node/runtime если есть id  
 
 **Не делать:** кнопки Start/Stop/Migrate (UI-4/5); PATCH form.
 
 **Критерии tester**
 
-- [ ] build PASS  
-- [ ] карточка рендерит поля из API  
-- [ ] events-запрос вызывается; пустой список — empty state  
+- [x] build PASS  
+- [x] карточка рендерит поля из API  
+- [x] events-запрос вызывается; пустой список — empty state  
 
 **Ручная проверка**
 
@@ -276,7 +276,7 @@ cd web && npm install && npm run dev
 2. Сверить поля с `curl /v1/bots`.  
 3. Events: пусто или записи без падения UI.
 
-**Принято вами:** [ ]
+**Принято вами:** [x] (2026-07-19)
 
 ---
 

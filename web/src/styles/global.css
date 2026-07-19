@@ -590,17 +590,26 @@ main p {
   max-width: 100%;
 }
 
-/* ——— Bot passport (UI-2 stub) ——— */
+/* ——— Bot passport + events (UI-3) ——— */
 
-.bot-passport__hint {
-  margin: 0 0 var(--space-4);
-  font-size: 0.9rem;
+.bot-passport {
+  margin-bottom: var(--space-5);
 }
 
 .bot-passport__states {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-5);
   margin-bottom: var(--space-4);
+}
+
+.bot-passport__states--large .bot-passport__state {
+  min-width: 8rem;
+}
+
+.bot-passport__states--large .state-pill {
+  font-size: 1.05rem;
+  padding: 0.35rem 0.75rem;
 }
 
 .bot-passport__label {
@@ -617,6 +626,16 @@ main p {
   color: var(--color-danger);
   border-radius: var(--radius);
   font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.bot-passport__error-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+  text-transform: lowercase;
+  opacity: 0.85;
 }
 
 .bot-passport__fields {
@@ -642,4 +661,47 @@ main p {
 .bot-passport__fields dd {
   margin: 0;
   word-break: break-all;
+}
+
+.bot-passport__link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.bot-passport__link:hover {
+  opacity: 0.85;
+}
+
+.bot-passport__scenario {
+  font-size: 0.85rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bot-events {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.bot-events__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.bot-events__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.bot-events__table td:last-child {
+  word-break: break-word;
 }

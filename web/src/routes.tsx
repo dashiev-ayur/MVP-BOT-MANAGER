@@ -11,7 +11,7 @@ import { RuntimesPage } from './pages/RuntimesPage'
 
 /**
  * Маршруты UI: /login + защищённая оболочка.
- * UI-2: read-only обзор / боты / ноды / runtimes + заглушка /bots/:id.
+ * Read-only обзор / боты / ноды / runtimes + карточка /bots/:id (UI-3).
  */
 export function AppRoutes() {
   return (

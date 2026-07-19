@@ -658,7 +658,7 @@ web/
 - [x] App shell + индикатор `/healthz` (UI-1, 2026-07-19)  
 - [x] Обзор (сводки + проблемы) (UI-2, 2026-07-19)  
 - [x] Список ботов + фильтры + refresh (UI-2, 2026-07-19)  
-- [ ] Карточка бота + events  
+- [x] Карточка бота + events (UI-3, 2026-07-19)  
 - [ ] Create bot  
 - [ ] Start / Stop (+ confirm stop)  
 - [ ] Migrate (+ выбор ноды, confirm)  
