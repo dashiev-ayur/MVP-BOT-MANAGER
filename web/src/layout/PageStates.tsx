@@ -34,7 +34,7 @@ export function ErrorBlock({ message, onRetry }: ErrorBlockProps) {
 
 type EmptyBlockProps = {
   message: string
-  /** Опциональный CTA (например «Создать» — disabled до UI-4). */
+  /** Опциональный CTA (например «Создать»). */
   action?: ReactNode
 }
 

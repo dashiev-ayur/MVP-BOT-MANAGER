@@ -659,8 +659,8 @@ web/
 - [x] Обзор (сводки + проблемы) (UI-2, 2026-07-19)  
 - [x] Список ботов + фильтры + refresh (UI-2, 2026-07-19)  
 - [x] Карточка бота + events (UI-3, 2026-07-19)  
-- [ ] Create bot  
-- [ ] Start / Stop (+ confirm stop)  
+- [x] Create bot (UI-4, 2026-07-19)  
+- [x] Start / Stop (+ confirm stop) (UI-4, 2026-07-19)  
 - [ ] Migrate (+ выбор ноды, confirm)  
 - [x] Список нод (UI-2, 2026-07-19)  
 - [ ] Документация запуска в `web/README.md`  

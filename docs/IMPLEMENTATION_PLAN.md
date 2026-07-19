@@ -426,9 +426,9 @@ export STORE=postgres
 
 ### UI-4. Create + Start / Stop
 
-- [ ] Форма создания бота + валидация
-- [ ] Start / Stop (Stop с confirm); сообщение про reconcile
-- [ ] **Принято вами**
+- [x] Форма создания бота + валидация
+- [x] Start / Stop (Stop с confirm); сообщение про reconcile
+- [x] **Принято вами** (2026-07-19)
 
 ### UI-5. Migrate
 

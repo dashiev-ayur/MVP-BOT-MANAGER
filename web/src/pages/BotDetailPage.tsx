@@ -1,7 +1,10 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
+import { ApiError } from '../api/client'
 import { listBotEvents, listBots, listNodes } from '../api/lists'
+import { startBot, stopBot } from '../api/mutations'
 import type { Bot, BotEvent, Node } from '../api/types'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageToolbar } from '../layout/PageStates'
 import { StatePill } from '../layout/StatePill'
 import { formatAbsoluteShort, formatRelativeRu } from '../lib/formatTime'
@@ -57,9 +60,23 @@ function sortEventsNewestFirst(events: BotEvent[]): BotEvent[] {
   })
 }
 
+/** Start: desired≠running (перезапрос running — когда уже running, кнопка скрыта). */
+function showStartAction(bot: Bot): boolean {
+  return bot.desired_state !== 'running'
+}
+
+/** Stop: desired=running или actual running/starting (§7.5). */
+function showStopAction(bot: Bot): boolean {
+  return (
+    bot.desired_state === 'running' ||
+    bot.actual_state === 'running' ||
+    bot.actual_state === 'starting'
+  )
+}
+
 /**
- * Карточка бота (/bots/:id) — паспорт + лента событий (UI-3).
- * Start/Stop/Migrate / PATCH — вне scope (UI-4/5).
+ * Карточка бота (/bots/:id) — паспорт + Start/Stop + лента событий (UI-3/4).
+ * Migrate — UI-5; PATCH — P1.
  *
  * key={id} снаружи: useFetchList не зависит от id, при смене :id нужен remount.
  */
@@ -72,6 +89,11 @@ export function BotDetailPage() {
 function BotDetailBody({ id }: { id: string }) {
   const passport = useFetchList(fetchDetailSnapshot)
   const eventsState = useFetchList((signal) => listBotEvents(id, signal))
+
+  const [actionBusy, setActionBusy] = useState<'start' | 'stop' | null>(null)
+  const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
+  const [actionInfo, setActionInfo] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const showPassportInitial = passport.loading && passport.data === null
   const bot = passport.data?.bots.find((b) => b.id === id) ?? null
@@ -90,6 +112,45 @@ function BotDetailBody({ id }: { id: string }) {
     (passport.loading && passport.data !== null) ||
     (eventsState.loading && eventsState.data !== null)
 
+  async function runStart() {
+    setActionError(null)
+    setActionInfo(null)
+    setActionBusy('start')
+    try {
+      await startBot(id)
+      setActionInfo('Команда принята; actual обновится после reconcile')
+      refreshAll()
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setActionError(err.message)
+      } else {
+        setActionError(err instanceof Error ? err.message : 'Не удалось выполнить Start')
+      }
+    } finally {
+      setActionBusy(null)
+    }
+  }
+
+  async function runStop() {
+    setActionError(null)
+    setActionInfo(null)
+    setActionBusy('stop')
+    try {
+      await stopBot(id)
+      setStopConfirmOpen(false)
+      setActionInfo('Команда принята; actual обновится после reconcile')
+      refreshAll()
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setActionError(err.message)
+      } else {
+        setActionError(err instanceof Error ? err.message : 'Не удалось выполнить Stop')
+      }
+    } finally {
+      setActionBusy(null)
+    }
+  }
+
   return (
     <main>
       <PageToolbar
@@ -97,14 +158,51 @@ function BotDetailBody({ id }: { id: string }) {
         onRefresh={refreshAll}
         refreshing={refreshing}
         actions={
-          <Link to="/bots" className="btn btn--secondary">
-            К списку
-          </Link>
+          <>
+            {bot && showStartAction(bot) ? (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => void runStart()}
+                disabled={actionBusy !== null}
+              >
+                {actionBusy === 'start' ? 'Start…' : 'Start'}
+              </button>
+            ) : null}
+            {bot && showStopAction(bot) ? (
+              <button
+                type="button"
+                className="btn btn--danger"
+                onClick={() => {
+                  setActionError(null)
+                  setStopConfirmOpen(true)
+                }}
+                disabled={actionBusy !== null}
+              >
+                Stop
+              </button>
+            ) : null}
+            <Link to="/bots" className="btn btn--secondary">
+              К списку
+            </Link>
+          </>
         }
       />
 
       {passport.error ? (
         <ErrorBlock message={passport.error} onRetry={passport.refresh} />
+      ) : null}
+
+      {actionError ? (
+        <div className="page-state page-state--error" role="alert">
+          <p className="page-state__message">{actionError}</p>
+        </div>
+      ) : null}
+
+      {actionInfo ? (
+        <p className="bot-action-info" role="status">
+          {actionInfo}
+        </p>
       ) : null}
 
       {showPassportInitial ? <LoadingBlock /> : null}
@@ -133,6 +231,27 @@ function BotDetailBody({ id }: { id: string }) {
           onRefresh={eventsState.refresh}
         />
       ) : null}
+
+      {/* Stop только через confirm — прямой POST без dialog недоступен. */}
+      <ConfirmDialog
+        open={stopConfirmOpen}
+        title="Остановить бота?"
+        message={
+          bot
+            ? `Бот «${bot.name}» получит desired=stopped. Actual обновится после reconcile.`
+            : 'Бот получит desired=stopped.'
+        }
+        confirmLabel="Stop"
+        cancelLabel="Отмена"
+        danger
+        busy={actionBusy === 'stop'}
+        onConfirm={() => void runStop()}
+        onCancel={() => {
+          if (actionBusy !== 'stop') {
+            setStopConfirmOpen(false)
+          }
+        }}
+      />
     </main>
   )
 }

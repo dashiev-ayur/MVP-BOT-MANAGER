@@ -286,22 +286,22 @@ cd web && npm install && npm run dev
 
 **Сделать**
 
-- [ ] `/bots/new` — форма групп полей ([frontend.md](./frontend.md) §7.6); custom-поля условно  
-- [ ] Клиентская валидация (name, port, custom_name, start_command, token_ref)  
-- [ ] `POST /v1/bots` → редирект на карточку  
-- [ ] Start / Stop на карточке (и опционально row actions)  
-- [ ] Stop → ConfirmDialog  
-- [ ] После команды: loading на кнопке; сообщение что actual догонит desired; refresh бота + events  
-- [ ] Показ `error` из API (400/409 лимит)  
+- [x] `/bots/new` — форма групп полей ([frontend.md](./frontend.md) §7.6); custom-поля условно  
+- [x] Клиентская валидация (name, port, custom_name, start_command, token_ref)  
+- [x] `POST /v1/bots` → редирект на карточку  
+- [x] Start / Stop на карточке (и опционально row actions)  
+- [x] Stop → ConfirmDialog  
+- [x] После команды: loading на кнопке; сообщение что actual догонит desired; refresh бота + events  
+- [x] Показ `error` из API (400/409 лимит)  
 
 **Не делать:** migrate; PATCH edit; авто-poll.
 
 **Критерии tester**
 
-- [ ] build PASS  
-- [ ] форма не шлёт custom_name для default  
-- [ ] stop без confirm недоступен (есть dialog)  
-- [ ] start/stop бьют правильные POST пути  
+- [x] build PASS  
+- [x] форма не шлёт custom_name для default  
+- [x] stop без confirm недоступен (есть dialog)  
+- [x] start/stop бьют правильные POST пути  
 
 **Ручная проверка**
 
@@ -310,7 +310,7 @@ cd web && npm install && npm run dev
 3. Stop → confirm → desired=stopped.  
 4. Создать с занятым port → ошибка API читаема.
 
-**Принято вами:** [ ]
+**Принято вами:** [x] (2026-07-19)
 
 ---
 

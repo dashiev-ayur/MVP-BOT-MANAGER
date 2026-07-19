@@ -32,7 +32,7 @@ async function fetchBotsSnapshot(signal: AbortSignal): Promise<BotsSnapshot> {
 }
 
 /**
- * Список ботов (/bots) — read-only UI-2.
+ * Список ботов (/bots) — фильтры + CTA «Создать» → /bots/new (UI-2/4).
  * Фильтры client-side, состояние в URL query; клик → /bots/:id.
  */
 export function BotsListPage() {
@@ -79,10 +79,9 @@ export function BotsListPage() {
         onRefresh={refresh}
         refreshing={loading && data !== null}
         actions={
-          // Create — UI-4; не вызываем POST. Disabled-кнопка как заглушка CTA.
-          <button type="button" className="btn btn--primary" disabled title="Будет в UI-4">
+          <Link to="/bots/new" className="btn btn--primary">
             Создать
-          </button>
+          </Link>
         }
       />
 
@@ -201,9 +200,9 @@ export function BotsListPage() {
         <EmptyBlock
           message="Нет ботов"
           action={
-            <button type="button" className="btn btn--primary" disabled title="Будет в UI-4">
+            <Link to="/bots/new" className="btn btn--primary">
               Создать
-            </button>
+            </Link>
           }
         />
       ) : null}
