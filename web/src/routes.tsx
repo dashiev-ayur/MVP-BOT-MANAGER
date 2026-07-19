@@ -6,6 +6,7 @@ import { AppShell } from './layout/AppShell'
 import { BotCreatePage } from './pages/BotCreatePage'
 import { BotDetailPage } from './pages/BotDetailPage'
 import { BotsListPage } from './pages/BotsListPage'
+import { NodeDetailPage } from './pages/NodeDetailPage'
 import { NodesListPage } from './pages/NodesListPage'
 import { OverviewPage } from './pages/OverviewPage'
 import { RuntimesPage } from './pages/RuntimesPage'
@@ -30,6 +31,7 @@ export function AppRoutes() {
             <Route path="bots/new" element={<BotCreatePage />} />
             <Route path="bots/:id" element={<BotDetailPage />} />
             <Route path="nodes" element={<NodesListPage />} />
+            <Route path="nodes/:id" element={<NodeDetailPage />} />
             <Route path="runtimes" element={<RuntimesPage />} />
           </Route>
         </Route>

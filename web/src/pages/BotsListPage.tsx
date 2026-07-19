@@ -72,6 +72,16 @@ export function BotsListPage() {
     return [...ids].sort()
   }, [bots])
 
+  // runtime_id из данных ботов + значение из URL (если пришли со /runtimes).
+  const runtimeOptions = useMemo(() => {
+    const ids = new Set<string>()
+    for (const bot of bots) {
+      if (bot.runtime_id) ids.add(bot.runtime_id)
+    }
+    if (filters.runtime_id) ids.add(filters.runtime_id)
+    return [...ids].sort()
+  }, [bots, filters.runtime_id])
+
   return (
     <main>
       <PageToolbar
@@ -180,6 +190,21 @@ export function BotsListPage() {
               {CHANNEL_OPTIONS.map((v) => (
                 <option key={v} value={v}>
                   {v}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="filters__field">
+            <span>runtime</span>
+            <select
+              value={filters.runtime_id}
+              onChange={(e) => updateFilter('runtime_id', e.target.value)}
+            >
+              <option value="">все</option>
+              {runtimeOptions.map((id) => (
+                <option key={id} value={id}>
+                  {shortId(id)}
                 </option>
               ))}
             </select>

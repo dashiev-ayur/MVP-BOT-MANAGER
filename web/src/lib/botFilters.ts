@@ -8,6 +8,7 @@ export const BOT_FILTER_KEYS = [
   'assigned_node_id',
   'client_id',
   'channel',
+  'runtime_id',
 ] as const
 
 export type BotFilterKey = (typeof BOT_FILTER_KEYS)[number]
@@ -19,6 +20,8 @@ export type BotFilters = {
   assigned_node_id: string
   client_id: string
   channel: string
+  /** Связь со страницы /runtimes: ?runtime_id=… */
+  runtime_id: string
 }
 
 /** Прочитать фильтры из URLSearchParams. */
@@ -30,6 +33,7 @@ export function parseBotFilters(params: URLSearchParams): BotFilters {
     assigned_node_id: params.get('assigned_node_id') ?? '',
     client_id: params.get('client_id') ?? '',
     channel: params.get('channel') ?? '',
+    runtime_id: params.get('runtime_id') ?? '',
   }
 }
 
@@ -62,6 +66,7 @@ export function filterBots(bots: Bot[], filters: BotFilters): Bot[] {
     }
     if (filters.client_id && (bot.client_id ?? '') !== filters.client_id) return false
     if (filters.channel && bot.channel !== filters.channel) return false
+    if (filters.runtime_id && (bot.runtime_id ?? '') !== filters.runtime_id) return false
     return true
   })
 }

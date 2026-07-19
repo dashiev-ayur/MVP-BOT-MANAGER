@@ -517,6 +517,52 @@ main p {
   font-size: 0.85rem;
 }
 
+/* Просроченный lease (UI-6.1 / §7.10) */
+.data-table__row--lease-stale {
+  background: var(--color-warn-bg);
+}
+
+.data-table__row--lease-stale.data-table__row--mismatch {
+  background: color-mix(in srgb, var(--color-warn-bg) 55%, var(--color-mismatch-bg));
+}
+
+.data-table__row--lease-stale:hover {
+  background: color-mix(in srgb, var(--color-warn-bg) 70%, var(--color-border));
+}
+
+.cell-lease-warning {
+  color: var(--color-warn);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lease-stale-badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-warn);
+  background: color-mix(in srgb, var(--color-warn) 12%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-warn) 35%, var(--color-border));
+  border-radius: var(--radius);
+  vertical-align: middle;
+}
+
+/* Секции карточки ноды */
+.node-section {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.node-section__title {
+  margin: 0 0 var(--space-4);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
 /* ——— Overview ——— */
 
 .overview-summaries {

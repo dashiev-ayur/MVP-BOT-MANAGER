@@ -49,3 +49,21 @@ export function formatAbsoluteShort(iso: string): string {
     second: '2-digit',
   })
 }
+
+/**
+ * Просрочен ли lease: есть ненулевой lease_until и он в прошлом
+ * (docs/frontend.md §7.10 — визуальный warning).
+ */
+export function isLeaseExpired(
+  leaseUntil: string | null,
+  nowMs: number = Date.now(),
+): boolean {
+  if (leaseUntil === null || leaseUntil === '') {
+    return false
+  }
+  const until = Date.parse(leaseUntil)
+  if (Number.isNaN(until)) {
+    return false
+  }
+  return until < nowMs
+}

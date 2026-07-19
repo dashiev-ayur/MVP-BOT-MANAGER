@@ -437,10 +437,12 @@ export STORE=postgres
 
 ### UI-6. P1 polish
 
-- [ ] Runtimes list (+ связь с ботами)
-- [ ] Карточка ноды; PATCH/edit бота
-- [ ] Toasts + авто-poll; обновить README
-- [ ] **Принято вами**
+- [x] Runtimes list (+ связь с ботами) — UI-6.1
+- [x] Карточка ноды `/nodes/:id` — UI-6.1
+- [x] **Принято вами (UI-6.1)** (2026-07-19)
+- [ ] PATCH/edit бота — UI-6.2
+- [ ] Toasts + авто-poll; обновить README — UI-6.3
+- [ ] **Принято вами** (весь UI-6)
 
 ### Закрытие Phase UI
 

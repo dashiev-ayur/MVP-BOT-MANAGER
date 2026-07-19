@@ -1,3 +1,4 @@
+import { Link, useNavigate } from 'react-router'
 import { listNodes } from '../api/lists'
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageToolbar } from '../layout/PageStates'
 import { StatePill } from '../layout/StatePill'
@@ -6,10 +7,11 @@ import { shortId } from '../lib/shortId'
 import { useFetchList } from '../lib/useFetchList'
 
 /**
- * Список нод (/nodes) — read-only таблица UI-2.
- * Колонки: id, hostname, status, last_seen_at, agent_version.
+ * Список нод (/nodes) — read-only таблица.
+ * Клик по строке → /nodes/:id (карточка UI-6.1).
  */
 export function NodesListPage() {
+  const navigate = useNavigate()
   const { data, error, loading, refresh } = useFetchList(listNodes)
   const nodes = data ?? []
   const showInitial = loading && data === null
@@ -44,13 +46,39 @@ export function NodesListPage() {
             </thead>
             <tbody>
               {nodes.map((node) => (
-                <tr key={node.id}>
+                <tr
+                  key={node.id}
+                  className="data-table__row--clickable"
+                  onClick={() => navigate(`/nodes/${node.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      navigate(`/nodes/${node.id}`)
+                    }
+                  }}
+                  tabIndex={0}
+                  role="link"
+                  aria-label={`Нода ${node.hostname}`}
+                >
                   <td>
-                    <code className="mono" title={node.id}>
+                    <Link
+                      to={`/nodes/${node.id}`}
+                      className="table-link mono"
+                      title={node.id}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {shortId(node.id)}
-                    </code>
+                    </Link>
                   </td>
-                  <td className="mono">{node.hostname}</td>
+                  <td>
+                    <Link
+                      to={`/nodes/${node.id}`}
+                      className="table-link mono"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {node.hostname}
+                    </Link>
+                  </td>
                   <td>
                     <StatePill label={node.status} />
                   </td>
