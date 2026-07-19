@@ -37,7 +37,7 @@
 | PG | PostgreSQL (адаптер store) | ✅ принята |
 | 3 | Типы, lease, migrate, API | ✅ принята |
 | 4 | Укрепление (hardening) | ✅ принята |
-| UI | Админка `web/` ([frontend.md](./frontend.md), [FRONTEND_PLAN.md](./FRONTEND_PLAN.md)) | ⏳ не начата |
+| UI | Админка `web/` ([frontend.md](./frontend.md), [FRONTEND_PLAN.md](./FRONTEND_PLAN.md)) | 🚧 в работе |
 
 *Статусы фазы: `⏳ не начата` → `🚧 в работе` → `👀 ждёт вашей проверки` → `✅ принята`.*  
 *Manager обновляет строку фазы в этой таблице.*
@@ -388,15 +388,15 @@ export STORE=postgres
 **ТЗ:** [frontend.md](./frontend.md)  
 **Подробный план блоков + роли агентов:** [FRONTEND_PLAN.md](./FRONTEND_PLAN.md)
 
-**Статус фазы:** ⏳ не начата  
+**Статус фазы:** 🚧 в работе  
 **Старт:** по отдельным заданиям (`UI-0a` … `UI-6`); не одним «сделай весь UI».  
 **Цепочка:** вы → manager → developer → tester (≤2 доработки) → отчёт вам → «Принято вами».
 
 ### UI-0a. JSON snake_case в control-api
 
-- [ ] Ответы Node/Bot/Runtime/BotEvent в snake_case
-- [ ] Тесты / curl-проверка контракта
-- [ ] **Принято вами**
+- [x] Ответы Node/Bot/Runtime/BotEvent в snake_case
+- [x] Тесты / curl-проверка контракта
+- [x] **Принято вами** (2026-07-19)
 
 ### UI-0b. Scaffold `web/`
 

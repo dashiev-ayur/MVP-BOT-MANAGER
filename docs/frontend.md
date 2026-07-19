@@ -337,20 +337,20 @@ Production: раздача `web/dist` любым static server / reverse-proxy �
 
 Предпочтительно для lifecycle использовать start/stop/migrate, а не PATCH `desired_state` (меньше сюрпризов с лимитами/ops). PATCH — для `token_ref`, `scenario_config`, точечного assignment.
 
-### 5.5. Важно: формат JSON в ответах (текущий разрыв)
+### 5.5. Формат JSON в ответах
+
+**Статус (UI-0a, 2026-07-19): выровнено.** Запросы и ответы control-api для Node/Bot/Runtime/BotEvent — канонический **snake_case**. Реализация: ответные DTO в `internal/api` (store-типы без field-level `json`-тегов; memory persist изолирован).
 
 Запросы create/patch/migrate используют **snake_case** (`bot_type`, `to_node_id`).
 
-Сущности `store.Node` / `Bot` / `Runtime` / `BotEvent` сейчас сериализуются **без json-тегов** → Go `encoding/json` отдаёт **PascalCase** (`ID`, `BotType`, `LastSeenAt`, …).
-
-| Решение для UI v1 | Рекомендация |
+| Решение для UI v1 | Статус |
 |---|---|
-| **A (предпочтительно)** | Перед или вместе со scaffold UI: добавить snake_case `json`-теги (или DTO в `internal/api`) на ответы — единый контракт |
-| **B** | UI маппит PascalCase → свои типы до выравнивания API |
+| **A (предпочтительно)** | **Сделано (UI-0a):** ответные DTO snake_case в `internal/api` |
+| **B** | Не нужен для v1 после UI-0a (normalize в client не требуется) |
 
-**Требование ТЗ:** в коде UI типы и парсер работают по **каноническому snake_case** (как в таблицах §4). Если API ещё отдаёт PascalCase — слой `api/client` делает нормализацию, либо сначала закрывается задача на control-api (предпочтительнее A).
+**Требование ТЗ:** в коде UI типы и парсер работают по **каноническому snake_case** (как в таблицах §4).
 
-Канонические имена полей ответов (цель):
+Канонические имена полей ответов:
 
 ```text
 id, hostname, status, last_seen_at, agent_version, meta, created_at, updated_at
@@ -662,7 +662,7 @@ web/
 - [ ] Migrate (+ выбор ноды, confirm)  
 - [ ] Список нод  
 - [ ] Документация запуска в `web/README.md`  
-- [ ] Выравнивание JSON snake_case (API задача A) или normalize в client  
+- [x] Выравнивание JSON snake_case (API задача A, UI-0a, 2026-07-19)
 
 ### P1 — паритет с типичным ctl + удобство
 
@@ -689,7 +689,7 @@ web/
 
 | Gap | Нужно для UI | Действие |
 |---|---|---|
-| PascalCase в JSON ответов | Предсказуемый контракт | json-теги / DTO snake_case |
+| ~~PascalCase в JSON ответов~~ | — | **Закрыто UI-0a:** DTO snake_case в `internal/api` |
 | Нет `GET /v1/bots/{id}` | Карточка без полного list | Опционально добавить; иначе filter list |
 | Нет серверных фильтров list | Ок для MVP | Client-side |
 | Нет глобальных events | Обзор P2 | Не блокирует v1 |

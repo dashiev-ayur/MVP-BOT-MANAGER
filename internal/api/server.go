@@ -23,10 +23,10 @@ import (
 
 // Server — зависимости HTTP API.
 type Server struct {
-	Token  string
-	Cfg    config.Config
-	Repos   ops.Repos
-	Log    *slog.Logger
+	Token string
+	Cfg   config.Config
+	Repos ops.Repos
+	Log   *slog.Logger
 }
 
 // New создаёт Server.
@@ -34,7 +34,7 @@ func New(cfg config.Config, repos ops.Repos) *Server {
 	return &Server{
 		Token: cfg.ControlAPIToken,
 		Cfg:   cfg,
-		Repos:  repos,
+		Repos: repos,
 		Log:   slog.Default(),
 	}
 }
@@ -91,7 +91,8 @@ func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	// Ответ в snake_case через DTO — store-типы без json-тегов не трогаем.
+	writeJSON(w, http.StatusOK, toNodeDTOs(list))
 }
 
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +101,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, maskBots(list))
+	writeJSON(w, http.StatusOK, toBotDTOs(maskBots(list)))
 }
 
 func (s *Server) handleListRuntimes(w http.ResponseWriter, r *http.Request) {
@@ -109,13 +110,13 @@ func (s *Server) handleListRuntimes(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	writeJSON(w, http.StatusOK, toRuntimeDTOs(list))
 }
 
 func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if s.Repos.Events == nil {
-		writeJSON(w, http.StatusOK, []store.BotEvent{})
+		writeJSON(w, http.StatusOK, []botEventDTO{})
 		return
 	}
 	list, err := s.Repos.Events.ListByBot(r.Context(), id)
@@ -123,7 +124,7 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	writeJSON(w, http.StatusOK, toBotEventDTOs(list))
 }
 
 func (s *Server) handleStartBot(w http.ResponseWriter, r *http.Request) {
@@ -170,18 +171,18 @@ func (s *Server) handleMigrateBot(w http.ResponseWriter, r *http.Request) {
 }
 
 type createBotBody struct {
-	Name           string          `json:"name"`
-	BotType        store.BotType   `json:"bot_type"`
-	CustomName     *string         `json:"custom_name"`
-	Channel        store.BotChannel `json:"channel"`
-	RunMode        store.BotRunMode `json:"run_mode"`
-	Port           int             `json:"port"`
-	TokenRef       string          `json:"token_ref"`
-	AssignedNodeID *string         `json:"assigned_node_id"`
+	Name           string             `json:"name"`
+	BotType        store.BotType      `json:"bot_type"`
+	CustomName     *string            `json:"custom_name"`
+	Channel        store.BotChannel   `json:"channel"`
+	RunMode        store.BotRunMode   `json:"run_mode"`
+	Port           int                `json:"port"`
+	TokenRef       string             `json:"token_ref"`
+	AssignedNodeID *string            `json:"assigned_node_id"`
 	DesiredState   store.DesiredState `json:"desired_state"`
-	ArtifactPath   *string         `json:"artifact_path"`
-	StartCommand   *string         `json:"start_command"`
-	Workdir        *string         `json:"workdir"`
+	ArtifactPath   *string            `json:"artifact_path"`
+	StartCommand   *string            `json:"start_command"`
+	Workdir        *string            `json:"workdir"`
 }
 
 func (s *Server) handleCreateBot(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +227,7 @@ func (s *Server) handleCreateBot(w http.ResponseWriter, r *http.Request) {
 		}
 		bot, _ = s.Repos.Bots.ByID(ctx, bot.ID)
 	}
-	writeJSON(w, http.StatusCreated, maskBot(bot))
+	writeJSON(w, http.StatusCreated, toBotDTO(maskBot(bot)))
 }
 
 func (s *Server) createCustom(ctx context.Context, body createBotBody, nodeID string) (store.Bot, error) {
@@ -378,7 +379,7 @@ func (s *Server) handlePatchBot(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, maskBot(bot))
+	writeJSON(w, http.StatusOK, toBotDTO(maskBot(bot)))
 }
 
 // maskBot копирует бота с замаскированным token_ref для HTTP-ответов.

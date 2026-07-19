@@ -118,10 +118,10 @@ flowchart LR
 
 **Сделать**
 
-- [ ] Ответы `GET/POST/PATCH` сущностей Node/Bot/Runtime/BotEvent в **snake_case** (имена из frontend.md §5.5)
-- [ ] Не сломать memory persist / postgres (теги или отдельный API DTO — выбрать меньший риск)
-- [ ] Тесты или ручная проверка curl: поле `bot_type` / `last_seen_at` в JSON
-- [ ] Краткая пометка в `docs/frontend.md` §5.5: «выровнено» / дата (manager после PASS)
+- [x] Ответы `GET/POST/PATCH` сущностей Node/Bot/Runtime/BotEvent в **snake_case** (имена из frontend.md §5.5)
+- [x] Не сломать memory persist / postgres (теги или отдельный API DTO — выбрать меньший риск)
+- [x] Тесты или ручная проверка curl: поле `bot_type` / `last_seen_at` в JSON
+- [x] Краткая пометка в `docs/frontend.md` §5.5: «выровнено» / дата (manager после PASS)
 
 **Не делать:** UI-экраны; смена семантики полей; RBAC.
 
@@ -129,9 +129,9 @@ flowchart LR
 
 **Критерии tester**
 
-- [ ] `go test` затронутых пакетов PASS  
-- [ ] `curl` list bots/nodes показывает snake_case ключи  
-- [ ] create/patch по-прежнему принимают snake_case  
+- [x] `go test` затронутых пакетов PASS  
+- [x] `curl` list bots/nodes показывает snake_case ключи  
+- [x] create/patch по-прежнему принимают snake_case  
 
 **Ручная проверка**
 
@@ -141,7 +141,9 @@ curl -s -H "Authorization: Bearer $CONTROL_API_TOKEN" http://127.0.0.1:8080/v1/b
 # ожидание: "bot_type", "desired_state", не "BotType"
 ```
 
-**Принято вами:** [ ]
+**Решение:** API DTO в `internal/api` (store-типы без json-тегов; memory persist без изменений).
+
+**Принято вами:** [x] (2026-07-19)
 
 ---
 
