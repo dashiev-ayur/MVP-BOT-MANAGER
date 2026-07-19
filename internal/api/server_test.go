@@ -35,6 +35,19 @@ func TestHealthzAndAuth(t *testing.T) {
 		t.Fatalf("healthz: %d", rr.Code)
 	}
 
+	// CORS: UI (Vite) ходит с Origin → нужны Allow-Origin и preflight.
+	reqCORS := httptest.NewRequest(http.MethodOptions, "/v1/bots", nil)
+	reqCORS.Header.Set("Origin", "http://localhost:5173")
+	reqCORS.Header.Set("Access-Control-Request-Method", "GET")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, reqCORS)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("OPTIONS: want 204, got %d", rr.Code)
+	}
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
+		t.Fatalf("CORS Allow-Origin: got %q", got)
+	}
+
 	rr = httptest.NewRecorder()
 	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/v1/bots", nil))
 	if rr.Code != http.StatusUnauthorized {

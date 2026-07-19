@@ -656,13 +656,13 @@ web/
 - [x] Scaffold Vite+React+TS в `web/` (UI-0b, 2026-07-19)  
 - [x] Login (URL + token) + session (UI-1, 2026-07-19)  
 - [x] App shell + индикатор `/healthz` (UI-1, 2026-07-19)  
-- [ ] Обзор (сводки + проблемы)  
-- [ ] Список ботов + фильтры + refresh  
+- [x] Обзор (сводки + проблемы) (UI-2, 2026-07-19)  
+- [x] Список ботов + фильтры + refresh (UI-2, 2026-07-19)  
 - [ ] Карточка бота + events  
 - [ ] Create bot  
 - [ ] Start / Stop (+ confirm stop)  
 - [ ] Migrate (+ выбор ноды, confirm)  
-- [ ] Список нод  
+- [x] Список нод (UI-2, 2026-07-19)  
 - [ ] Документация запуска в `web/README.md`  
 - [x] Выравнивание JSON snake_case (API задача A, UI-0a, 2026-07-19)
 

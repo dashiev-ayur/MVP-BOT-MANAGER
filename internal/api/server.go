@@ -40,6 +40,8 @@ func New(cfg config.Config, repos ops.Repos) *Server {
 }
 
 // Handler возвращает корневой mux со всеми маршрутами §11.
+// Обёртка CORS: UI на другом origin (Vite :5173 → API :8080) иначе
+// браузер блокирует fetch, и логин показывает «API недоступен».
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
@@ -53,7 +55,25 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/bots/{id}/migrate", s.auth(s.handleMigrateBot))
 	mux.HandleFunc("GET /v1/runtimes", s.auth(s.handleListRuntimes))
 	mux.HandleFunc("GET /v1/bots/{id}/events", s.auth(s.handleListEvents))
-	return mux
+	return withCORS(mux)
+}
+
+// withCORS отражает Origin запроса (админка + Bearer). Preflight OPTIONS — 204.
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+			w.Header().Set("Vary", "Origin")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {

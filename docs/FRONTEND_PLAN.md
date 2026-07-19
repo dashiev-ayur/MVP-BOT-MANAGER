@@ -221,23 +221,23 @@ cd web && npm install && npm run dev
 
 **Сделать**
 
-- [ ] `/nodes` — таблица: id, hostname, status, last_seen_at, agent_version; StatusPill  
-- [ ] `/bots` — таблица полей из ТЗ; client-side фильтры; query в URL желательно  
-- [ ] Подсветка desired ≠ actual  
-- [ ] Клик по боту → `/bots/:id` (страница-заглушка ок, если UI-3 следующим; лучше сразу route)  
-- [ ] `/` Обзор: сводки nodes/bots/runtimes + блок «Требуют внимания»  
-- [ ] Кнопка «Обновить» на списках  
-- [ ] Empty / Error / Loading состояния  
-- [ ] Опционально: минимальный `/runtimes` read-only (иначе строго в UI-6)
+- [x] `/nodes` — таблица: id, hostname, status, last_seen_at, agent_version; StatusPill  
+- [x] `/bots` — таблица полей из ТЗ; client-side фильтры; query в URL желательно  
+- [x] Подсветка desired ≠ actual  
+- [x] Клик по боту → `/bots/:id` (страница-заглушка ок, если UI-3 следующим; лучше сразу route)  
+- [x] `/` Обзор: сводки nodes/bots/runtimes + блок «Требуют внимания»  
+- [x] Кнопка «Обновить» на списках  
+- [x] Empty / Error / Loading состояния  
+- [x] Опционально: минимальный `/runtimes` read-only (иначе строго в UI-6)
 
 **Не делать:** create/start/stop/migrate; edit; toasts/poll (P1).
 
 **Критерии tester**
 
-- [ ] build PASS  
-- [ ] при работающем API списки не пустые на сидах (если сиды есть)  
-- [ ] фильтры ботов меняют видимые строки  
-- [ ] нет POST/PATCH/migrate вызовов в коде страниц этого блока  
+- [x] build PASS  
+- [x] при работающем API списки не пустые на сидах (если сиды есть)  
+- [x] фильтры ботов меняют видимые строки  
+- [x] нет POST/PATCH/migrate вызовов в коде страниц этого блока  
 
 **Ручная проверка**
 
@@ -246,7 +246,7 @@ cd web && npm install && npm run dev
 3. Ноды: виден status и относительное время last_seen.  
 4. «Требуют внимания» кликабельно.
 
-**Принято вами:** [ ]
+**Принято вами:** [x] (2026-07-19)
 
 ---
 

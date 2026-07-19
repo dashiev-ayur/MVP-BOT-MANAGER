@@ -33,14 +33,13 @@ export function LoginPage() {
       return
     }
 
-    // Пустой base URL = same-origin / Vite proxy (удобно в dev).
-    const trimmedBase = baseUrl.trim()
     setSubmitting(true)
 
     try {
-      // 1) Доступность API — без auth; тело должно быть «ok».
+      // 1) Найти рабочий base: proxy → прямой :8080 (API должен быть запущен).
+      let trimmedBase: string
       try {
-        await checkHealthz({ baseUrl: trimmedBase })
+        trimmedBase = await resolveReachableApiBase(baseUrl.trim())
       } catch (err) {
         setError(formatUnavailableError(err))
         return
@@ -71,6 +70,8 @@ export function LoginPage() {
         <h1>Вход</h1>
         <p className="login-page__hint">
           Подключение к control-api. Токен = значение <code>CONTROL_API_TOKEN</code>.
+          В dev поле Base URL лучше оставить пустым (запросы идут через Vite proxy на{' '}
+          <code>:8080</code>).
         </p>
 
         <form className="login-form" onSubmit={handleSubmit}>
@@ -80,7 +81,7 @@ export function LoginPage() {
               type="text"
               name="baseUrl"
               autoComplete="url"
-              placeholder="пусто = этот хост / proxy"
+              placeholder="оставьте пустым"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               disabled={submitting}
@@ -126,15 +127,101 @@ function initialMessage(reason: LoginLocationState['reason']): string | null {
   return null
 }
 
+/**
+ * Нормализация Base URL для логина.
+ * - пусто → Vite proxy
+ * - `127.0.0.1:8080` без схемы → иначе fetch считает путь относительным и получает HTML
+ * - локальный :8080 → пустой base (proxy)
+ */
+function normalizeLoginBaseUrl(raw: string): string {
+  if (!raw) {
+    return ''
+  }
+  let candidate = raw
+  // Нет схемы (http/https) — для URL() и fetch это не абсолютный адрес.
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate)) {
+    candidate = `http://${candidate}`
+  }
+  try {
+    const u = new URL(candidate)
+    const localHost = u.hostname === '127.0.0.1' || u.hostname === 'localhost'
+    if (localHost && u.port === '8080') {
+      return ''
+    }
+    return u.origin
+  } catch {
+    return raw
+  }
+}
+
+/**
+ * Перебираем proxy и прямой URL: /healthz должен ответить «ok».
+ * Типичная ошибка — control-api не запущен (в терминале после ^C его нет).
+ */
+async function resolveReachableApiBase(rawInput: string): Promise<string> {
+  const preferred = normalizeLoginBaseUrl(rawInput)
+  const candidates = uniqueBases([
+    preferred,
+    '',
+    'http://127.0.0.1:8080',
+    'http://localhost:8080',
+  ])
+
+  let lastErr: unknown
+  for (const base of candidates) {
+    try {
+      await checkHealthz({ baseUrl: base })
+      return base
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new ApiError(0, 'API unreachable')
+}
+
+function uniqueBases(bases: string[]): string[] {
+  const out: string[] = []
+  for (const b of bases) {
+    if (!out.includes(b)) {
+      out.push(b)
+    }
+  }
+  return out
+}
+
 /** Сообщение, когда /healthz недоступен. */
 function formatUnavailableError(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.status === 0) {
-      return 'API недоступен: нет сети или неверный Base URL.'
+    if (err.message.includes('unexpected healthz')) {
+      return (
+        'Ответ /healthz не от control-api. Откройте UI через npm run dev, Base URL очистите; ' +
+        'не вводите адрес без http://.'
+      )
     }
-    return `API недоступен (HTTP ${err.status}). Проверьте Base URL и что control-api запущен.`
+    if (err.status === 502 || err.status === 503 || err.status === 504) {
+      return (
+        'Vite proxy не достучался до control-api (HTTP ' +
+        err.status +
+        '). В отдельном терминале из корня репозитория запустите и не останавливайте:\n' +
+        'export NODE_ID=node-1 STORE=memory CONTROL_API_TOKEN=dev-token\n' +
+        'go run ./cmd/control-api'
+      )
+    }
+    if (err.status === 0) {
+      return (
+        'control-api не отвечает на 127.0.0.1:8080. Запустите его в отдельном терминале ' +
+        '(и оставьте работать, не нажимайте Ctrl+C):\n' +
+        'export NODE_ID=node-1 STORE=memory CONTROL_API_TOKEN=dev-token\n' +
+        'go run ./cmd/control-api\n' +
+        'UI: cd web && npm run dev — Base URL пустой, токен dev-token.'
+      )
+    }
+    return `API недоступен (HTTP ${err.status}). Проверьте, что control-api запущен.`
   }
-  return 'API недоступен. Проверьте Base URL и что control-api запущен.'
+  return (
+    'control-api недоступен. Запустите: go run ./cmd/control-api ' +
+    '(NODE_ID, CONTROL_API_TOKEN) и npm run dev в web/.'
+  )
 }
 
 /** Сообщение при ошибке пробного /v1/nodes (токен). */

@@ -149,16 +149,35 @@ async function readErrorMessage(response: Response): Promise<string> {
 }
 
 /**
- * GET /healthz: ожидает text/plain «ok» (как control-api).
- * Отсекает закэшированный HTML или чужой 200.
+ * GET /healthz: всегда читаем как text (не JSON), тело строго «ok».
+ * Отдельный fetch — чтобы SPA HTML с Content-Type text/html не проходил как online.
  */
 export async function checkHealthz(options: Pick<RequestOptions, 'baseUrl' | 'signal'> = {}): Promise<void> {
-  const body = await apiRequest<string>(endpoints.healthz, {
-    auth: false,
-    baseUrl: options.baseUrl,
-    signal: options.signal,
-  })
-  if (typeof body !== 'string' || body.trim() !== 'ok') {
+  const base =
+    options.baseUrl !== undefined
+      ? stripTrailingSlash(options.baseUrl)
+      : getBaseUrl()
+  const url = `${base}${endpoints.healthz}`
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: options.signal,
+    })
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'network error'
+    throw new ApiError(0, `Сеть недоступна: ${reason}`)
+  }
+
+  if (!response.ok) {
+    throw new ApiError(response.status, `HTTP ${response.status}`)
+  }
+
+  const body = await response.text()
+  // control-api пишет "ok\n"; HTML от Vite/preview без proxy — не принимаем.
+  if (!/^\s*ok\s*$/.test(body)) {
     throw new ApiError(0, 'unexpected healthz body')
   }
 }

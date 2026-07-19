@@ -42,7 +42,11 @@ Vite поднимет dev-server. Запросы к `/v1` и `/healthz` прок
 VITE_CONTROL_API_URL=http://127.0.0.1:8080 npm run dev
 ```
 
-Маршруты-заглушки (UI-0b): `/` (обзор), `/login` (вход).
+На экране входа в **dev** поле Base URL лучше оставить пустым (proxy на `:8080`).
+Если указать `http://127.0.0.1:8080` напрямую — нужен CORS на control-api (уже включён)
+или тот же пустой Base URL (UI сам сведёт localhost:8080 к proxy).
+
+Маршруты: `/login`, `/`, `/bots`, `/nodes`, `/runtimes`, `/bots/:id`.
 
 ## Сборка и preview
 
