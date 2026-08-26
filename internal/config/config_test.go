@@ -26,9 +26,9 @@ func TestLoad_HappyPathMemory(t *testing.T) {
 	}
 }
 
-// TestLoad_DefaultStoreMemory проверяет, что пустой/отсутствующий STORE
-// даёт значение по умолчанию memory.
-func TestLoad_DefaultStoreMemory(t *testing.T) {
+// TestLoad_DefaultStorePostgres проверяет, что пустой/отсутствующий STORE
+// даёт значение по умолчанию postgres.
+func TestLoad_DefaultStorePostgres(t *testing.T) {
 	t.Setenv(config.EnvNodeID, "local")
 	// Пустая строка имитирует «не задано» после TrimSpace; t.Setenv("")
 	// гарантированно переопределяет возможное значение из окружения CI.
@@ -38,8 +38,11 @@ func TestLoad_DefaultStoreMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() неожиданная ошибка: %v", err)
 	}
-	if cfg.Store != config.DefaultStore {
-		t.Fatalf("Store по умолчанию: got %q, want %q", cfg.Store, config.DefaultStore)
+	if cfg.Store != config.StorePostgres {
+		t.Fatalf("Store по умолчанию: got %q, want %q", cfg.Store, config.StorePostgres)
+	}
+	if config.DefaultStore != config.StorePostgres {
+		t.Fatalf("DefaultStore constant: got %q, want %q", config.DefaultStore, config.StorePostgres)
 	}
 }
 

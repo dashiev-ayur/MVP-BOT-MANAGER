@@ -106,11 +106,12 @@ type EditFormState = {
   /** Новый token_ref; пусто = omit в PATCH (не затирать секрет). */
   token_ref: string
   assigned_node_id: string
+  client_id: string
   scenario_config_text: string
 }
 
 /**
- * Форма PATCH: token_ref / assigned_node_id / scenario_config.
+ * Форма PATCH: token_ref / client_id / assigned_node_id / scenario_config.
  * Start/Stop намеренно отсутствуют — lifecycle на карточке.
  */
 function BotEditForm({ bot, nodes }: BotEditFormProps) {
@@ -121,6 +122,7 @@ function BotEditForm({ bot, nodes }: BotEditFormProps) {
   const [form, setForm] = useState<EditFormState>(() => ({
     token_ref: '',
     assigned_node_id: bot.assigned_node_id ?? '',
+    client_id: bot.client_id ?? '',
     scenario_config_text: originalScenarioText,
   }))
   const [fieldError, setFieldError] = useState<string | null>(null)
@@ -143,6 +145,8 @@ function BotEditForm({ bot, nodes }: BotEditFormProps) {
       token_ref: form.token_ref,
       assigned_node_id: form.assigned_node_id,
       original_assigned_node_id: bot.assigned_node_id,
+      client_id: form.client_id,
+      original_client_id: bot.client_id,
       scenario_config_text: form.scenario_config_text,
       original_scenario_config_text: originalScenarioText,
     })
@@ -188,6 +192,23 @@ function BotEditForm({ bot, nodes }: BotEditFormProps) {
             onChange={(e) => patchField('token_ref', e.target.value)}
             autoComplete="off"
             placeholder="оставьте пустым, чтобы не менять"
+          />
+        </label>
+      </fieldset>
+
+      <fieldset className="bot-form__group" disabled={submitting}>
+        <legend>Клиент</legend>
+        <label className="bot-form__field">
+          <span>client_id</span>
+          <input
+            type="text"
+            name="client_id"
+            className="mono"
+            value={form.client_id}
+            onChange={(e) => patchField('client_id', e.target.value)}
+            autoComplete="off"
+            placeholder="необязательно, UUID; пусто — сбросить"
+            spellCheck={false}
           />
         </label>
       </fieldset>

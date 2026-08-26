@@ -73,12 +73,15 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	slog.Info("control-api слушает",
+	args := []any{
 		"addr", cfg.APIAddr,
 		"store", storeKind,
-		"memory_store_path", cfg.MemoryStorePath,
 		"node_id", cfg.NodeID,
-	)
+	}
+	if storeKind == config.StoreMemory {
+		args = append(args, "memory_store_path", cfg.MemoryStorePath)
+	}
+	slog.Info("control-api слушает", args...)
 
 	errCh := make(chan error, 1)
 	go func() {

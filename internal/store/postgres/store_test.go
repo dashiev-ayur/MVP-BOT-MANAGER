@@ -93,3 +93,49 @@ func TestPostgresBotPortConflictAndLease(t *testing.T) {
 		t.Fatalf("release: %v", err)
 	}
 }
+
+func TestPostgresListByClientID(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	clientA := "11111111-1111-4111-8111-111111111111"
+	clientB := "22222222-2222-4222-8222-222222222222"
+	port := 41000 + int(time.Now().UnixNano()%20000)
+
+	a1, err := st.Bots.Create(ctx, store.Bot{
+		ClientID: &clientA, Name: "pg-a1", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: port, TokenRef: "t-a",
+	})
+	if err != nil {
+		t.Fatalf("create a1: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Bots.Delete(ctx, a1.ID) })
+
+	b1, err := st.Bots.Create(ctx, store.Bot{
+		ClientID: &clientB, Name: "pg-b1", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: port + 1, TokenRef: "t-b",
+	})
+	if err != nil {
+		t.Fatalf("create b1: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Bots.Delete(ctx, b1.ID) })
+
+	got, err := st.Bots.ListByClientID(ctx, clientA)
+	if err != nil {
+		t.Fatalf("ListByClientID: %v", err)
+	}
+	found := false
+	for _, b := range got {
+		if b.ID == a1.ID {
+			found = true
+		}
+		if b.ID == b1.ID {
+			t.Fatalf("client A list contains bot of client B")
+		}
+	}
+	if !found {
+		t.Fatalf("client A list missing a1")
+	}
+}

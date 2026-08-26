@@ -145,6 +145,21 @@ func (r *BotRepo) ListByRuntime(ctx context.Context, runtimeID string) ([]store.
 	return out, err
 }
 
+// ListByClientID — боты с client_id = clientID (сравнение без учёта регистра UUID).
+func (r *BotRepo) ListByClientID(ctx context.Context, clientID string) ([]store.Bot, error) {
+	var out []store.Bot
+	err := r.s.doRead(ctx, func() error {
+		out = make([]store.Bot, 0)
+		for _, b := range r.s.bots {
+			if b.ClientID != nil && strings.EqualFold(*b.ClientID, clientID) {
+				out = append(out, cloneBot(b))
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
 // Update полностью заменяет изменяемые поля бота (кроме CreatedAt).
 func (r *BotRepo) Update(ctx context.Context, b store.Bot) (store.Bot, error) {
 	if b.ID == "" {

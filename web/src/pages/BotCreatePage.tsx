@@ -6,6 +6,7 @@ import { buildCreateBotBody, createBot } from '../api/mutations'
 import type { BotChannel, BotRunMode, BotType, DesiredState } from '../api/types'
 import { ErrorBlock, LoadingBlock, PageToolbar } from '../layout/PageStates'
 import { useFetchList } from '../lib/useFetchList'
+import { isUUID } from '../lib/uuid'
 import { useToast } from '../toast/ToastContext'
 
 const BOT_TYPE_OPTIONS: BotType[] = ['default', 'default_extended', 'custom']
@@ -17,6 +18,7 @@ type FormState = {
   bot_type: BotType
   channel: BotChannel
   custom_name: string
+  client_id: string
   assigned_node_id: string
   port: string
   run_mode: BotRunMode
@@ -32,6 +34,7 @@ const INITIAL_FORM: FormState = {
   bot_type: 'default',
   channel: 'telegram',
   custom_name: '',
+  client_id: '',
   assigned_node_id: '',
   port: '',
   run_mode: 'webhook',
@@ -80,6 +83,11 @@ function validateForm(form: FormState, occupiedPorts: Set<number>): string | nul
 
   if (!form.token_ref.trim()) {
     return 'Укажите token_ref'
+  }
+
+  const clientId = form.client_id.trim()
+  if (clientId && !isUUID(clientId)) {
+    return 'Некорректный client_id (нужен UUID)'
   }
 
   return null
@@ -135,6 +143,7 @@ export function BotCreatePage() {
       token_ref: form.token_ref.trim(),
       desired_state: form.desired_state,
       assigned_node_id: form.assigned_node_id,
+      client_id: form.client_id,
       custom_name: form.custom_name,
       artifact_path: form.artifact_path,
       start_command: form.start_command,
@@ -222,6 +231,19 @@ export function BotCreatePage() {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="bot-form__field">
+              <span>client_id</span>
+              <input
+                type="text"
+                name="client_id"
+                className="mono"
+                value={form.client_id}
+                onChange={(e) => patch('client_id', e.target.value)}
+                autoComplete="off"
+                placeholder="необязательно, UUID"
+                spellCheck={false}
+              />
             </label>
             {isCustom ? (
               <label className="bot-form__field">

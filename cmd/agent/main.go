@@ -71,7 +71,6 @@ func main() {
 	slog.Info("конфиг загружен",
 		"node_id", cfg.NodeID,
 		"store", storeKind,
-		"memory_store_path", cfg.MemoryStorePath,
 		"bot_runner_command", cfg.BotRunnerCommand,
 		"lease_ttl", cfg.LeaseTTL.String(),
 		"reconcile_interval", cfg.ReconcileInterval.String(),
@@ -81,6 +80,9 @@ func main() {
 		"restart_backoff_base", cfg.RestartBackoffBase.String(),
 		"max_bots_per_node", cfg.MaxBotsPerNode,
 	)
+	if storeKind == config.StoreMemory {
+		slog.Info("memory store", "path", cfg.MemoryStorePath)
+	}
 
 	// Регистрация ноды в store (Upsert по NODE_ID) — агент «появляется» в реестре.
 	hostname, herr := os.Hostname()

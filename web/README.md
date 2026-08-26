@@ -36,8 +36,9 @@ SPA-админка mvp-manager (Phase UI). Клиент ходит **тольк�
 
 ```bash
 export NODE_ID=node-1
-export STORE=memory
+export DATABASE_URL='postgres://mvp:mvp@127.0.0.1:5432/mvp_manager?sslmode=disable'
 export CONTROL_API_TOKEN=dev-token
+# STORE по умолчанию postgres; для офлайна: STORE=memory
 go run ./cmd/control-api
 ```
 

@@ -18,7 +18,7 @@
 //
 //   - NodeRepository    — регистрация ноды, heartbeat, чтение
 //   - RuntimeRepository — OS-процессы (bot_runner / custom_bot), desired/actual, lease
-//   - BotRepository     — логические боты, desired/actual, выборки по node/runtime
+//   - BotRepository     — логические боты, desired/actual, выборки по node/runtime/client
 //
 // Методы рассчитаны на будущий reconcile/ctl Phase 1 (CRUD/list, смена desired/actual,
 // heartbeat), без раздувания «на всё будущее».

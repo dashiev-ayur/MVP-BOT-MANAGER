@@ -261,7 +261,7 @@ Production: раздача `web/dist` любым static server / reverse-proxy �
 |---|---|---|---|
 | `GET` | `/healthz` | нет | индикатор API (тело `ok\n`, text/plain) |
 | `GET` | `/v1/nodes` | да | ноды, migrate targets, сводка |
-| `GET` | `/v1/bots` | да | список, обзор, фильтры (client-side) |
+| `GET` | `/v1/bots` | да | список, обзор; `?client_id=` — серверный фильтр |
 | `POST` | `/v1/bots` | да | создать |
 | `PATCH` | `/v1/bots/{id}` | да | редактировать (P1) |
 | `POST` | `/v1/bots/{id}/start` | да | Start |
@@ -287,6 +287,7 @@ Production: раздача `web/dist` любым static server / reverse-proxy �
   "token_ref": "secret:bot-42",
   "assigned_node_id": "node-1",
   "desired_state": "stopped",
+  "client_id": "11111111-1111-4111-8111-111111111111",
   "artifact_path": null,
   "start_command": null,
   "workdir": null
@@ -303,6 +304,7 @@ Production: раздача `web/dist` любым static server / reverse-proxy �
 | `port` | да | int, unique |
 | `token_ref` | да | |
 | `assigned_node_id` | нет | иначе нода из конфига API (`NODE_ID`) |
+| `client_id` | нет | UUID клиента; omit/пусто → `null`; невалидный UUID → `400` |
 | `desired_state` | нет | если `running` — API сразу вызовет start (с лимитом) |
 | `artifact_path`, `start_command`, `workdir` | для custom | `start_command` обязателен по валидации custom |
 
@@ -331,13 +333,14 @@ Production: раздача `web/dist` любым static server / reverse-proxy �
 {
   "desired_state": "running",
   "token_ref": "env:TELEGRAM_BOT_TOKEN",
+  "client_id": "11111111-1111-4111-8111-111111111111",
   "assigned_node_id": "node-2",
   "config_version": 2,
   "scenario_config": {}
 }
 ```
 
-Предпочтительно для lifecycle использовать start/stop/migrate, а не PATCH `desired_state` (меньше сюрпризов с лимитами/ops). PATCH — для `token_ref`, `scenario_config`, точечного assignment.
+Предпочтительно для lifecycle использовать start/stop/migrate, а не PATCH `desired_state` (меньше сюрпризов с лимитами/ops). PATCH — для `token_ref`, `client_id`, `scenario_config`, точечного assignment. Пустой `client_id` (`""`) сбрасывает поле в `null`.
 
 ### 5.5. Формат JSON в ответах
 
@@ -379,7 +382,8 @@ POST /v1/bots
   "port": 18042,
   "assigned_node_id": "node-1",
   "desired_state": "running",
-  "token_ref": "secret:bot-42"
+  "token_ref": "secret:bot-42",
+  "client_id": "11111111-1111-4111-8111-111111111111"
 }
 ```
 
@@ -426,7 +430,7 @@ Query-фильтры на `/bots` (желательно, чтобы шарили
 ?bot_type=&desired_state=&actual_state=&assigned_node_id=&client_id=&channel=&runtime_id=
 ```
 
-Фильтрация в v1 — **на клиенте** по полному `GET /v1/bots` (серверных query пока нет).
+Фильтрация в v1 — **на клиенте** по `GET /v1/bots`, кроме `client_id`: его можно передать query-параметром (`GET /v1/bots?client_id=<uuid>`), сервер отдаёт только совпадения. Без параметра — полный список. Невалидный UUID → `400`.
 
 ---
 
@@ -514,7 +518,7 @@ Query-фильтры на `/bots` (желательно, чтобы шарили
 
 Группы полей:
 
-1. **Идентичность:** name, bot_type, channel, (custom_name если custom)  
+1. **Идентичность:** name, bot_type, channel, client_id (опциональный UUID), (custom_name если custom)  
 2. **Размещение:** assigned_node_id (select из nodes), port, run_mode  
 3. **Секрет:** token_ref  
 4. **Custom-only:** artifact_path, start_command, workdir  
@@ -530,13 +534,14 @@ Query-фильтры на `/bots` (желательно, чтобы шарили
 | custom без custom_name | Для custom укажите custom_name |
 | custom без start_command | Укажите start_command |
 | token_ref пустой | Укажите token_ref |
+| client_id непустой, но не UUID | Некорректный client_id (нужен UUID) |
 
 Успех `201` → переход на `/bots/:id`.  
 Ошибка API → текст `error` у формы.
 
 ### 7.7. Редактировать (P1, `/bots/:id/edit`)
 
-Поля PATCH: token_ref (пусто = не менять), assigned_node_id, scenario_config (JSON editor простой), config_version только если нужно явно.  
+Поля PATCH: token_ref (пусто = не менять), client_id (UUID; пусто = сбросить), assigned_node_id, scenario_config (JSON editor простой), config_version только если нужно явно.  
 Не дублировать Start/Stop через форму, если есть кнопки на карточке.
 
 ### 7.8. Migrate (dialog)

@@ -2,19 +2,46 @@
 
 Менеджер runtime ботов на ноде (Go): демон `agent`, multi-tenant `bot-runner`, отдельный `healthcheck`, CLI `ctl` и HTTP `control-api`.
 
-Хранилище выбирается конфигом: **`STORE=postgres`** (Docker Compose + goose; так в `.env.example`) или **`STORE=memory`** (JSON-файл; memory e2e задают явно). Бизнес-логика (reconcile/supervisor/runner/ops) от драйвера БД не зависит.
+Хранилище по умолчанию — **`STORE=postgres`** (Docker Compose + goose). Для офлайна без Docker задайте `STORE=memory` явно. Бизнес-логика (reconcile/supervisor/runner/ops) от драйвера БД не зависит.
 
 Подробности ТЗ, плана и процесса работы с агентами — в [`docs/`](./docs/) ([TZ](./docs/TZ.md), [план](./docs/IMPLEMENTATION_PLAN.md), [как работать](./docs/Readme.md), [frontend / UI](./docs/frontend.md)). Handoff клиенту (single-bot) — [`docs/handoff/`](./docs/handoff/).
 
 **UI:** каталог [`web/`](./web/) в этом репозитории (monorepo). Клиент ходит только в `control-api`. ТЗ — [`docs/frontend.md`](./docs/frontend.md); план блоков (manager/developer/tester) — [`docs/FRONTEND_PLAN.md`](./docs/FRONTEND_PLAN.md).
 
-### UI: быстрая проверка
-
-Токен **не зашит** в коде — задаётся env при старте API; тот же секрет вводите на экране входа.
+## Быстрый старт (PostgreSQL)
 
 ```bash
-# терминал 1 (корень репозитория)
-export NODE_ID=node-1 STORE=memory CONTROL_API_TOKEN=dev-token
+# 0) env (приложение само .env не читает)
+cp .env.example .env   # при необходимости
+set -a && source .env && set +a
+
+# 1) БД + схема + сиды
+docker compose up -d
+go build -o bin/migrate ./cmd/migrate && ./bin/migrate up
+./bin/migrate seed
+
+# 2) сборка
+go build -o bin/agent ./cmd/agent
+go build -o bin/ctl ./cmd/ctl
+go build -o bin/bot-runner ./cmd/bot-runner
+go build -o bin/control-api ./cmd/control-api
+
+# 3) agent + API (STORE по умолчанию postgres)
+export NODE_ID=node-1
+export DATABASE_URL='postgres://mvp:mvp@127.0.0.1:5432/mvp_manager?sslmode=disable'
+export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
+export CONTROL_API_TOKEN=dev-token
+
+./bin/agent &
+./bin/control-api &
+./bin/ctl bots list   # 3 seed default-бота (desired=stopped)
+```
+
+### UI: быстрая проверка
+
+```bash
+# терминал 1 — control-api (нужны NODE_ID + DATABASE_URL, см. выше)
+export CONTROL_API_TOKEN=dev-token
 go run ./cmd/control-api
 
 # терминал 2
@@ -22,6 +49,38 @@ cd web && npm install && npm run dev
 ```
 
 В форме входа: **Base URL** — пусто; **Bearer token** — `dev-token`. Подробнее — [`web/README.md`](./web/README.md).
+
+### Живой Telegram через БД
+
+Нужен токен от [@BotFather](https://t.me/BotFather). Скрипт поднимает postgres (если ещё не), migrate, agent, создаёт polling-бота и ждёт `/start`.
+
+```bash
+export TELEGRAM_BOT_TOKEN='123456:ABC-DEF'   # токен от BotFather
+./scripts/manual-telegram-start.sh
+```
+
+Дождитесь в логе `telegram webhook cleared`, затем напишите `/start` боту в Telegram.
+
+Ожидаемый ответ: `Привет! Сценарий default (mvp-manager) готов.`
+
+Вручную (тот же стек, без скрипта):
+
+```bash
+docker compose up -d
+set -a && source .env && set +a   # или export DATABASE_URL=… NODE_ID=node-1
+go run ./cmd/migrate up
+
+export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
+export TELEGRAM_BOT_TOKEN='123456:ABC-DEF'
+
+./bin/agent &
+./bin/ctl bots create --type default --name live-tg --port 18290 \
+  --token 'env:TELEGRAM_BOT_TOKEN' --mode polling --channel telegram
+./bin/ctl bots start <bot-id>
+# /start в Telegram → приветствие; затем: ./bin/ctl bots stop <bot-id>
+```
+
+Без Docker: `STORE=memory ./scripts/manual-telegram-start.sh`.
 
 ## Сборка
 
@@ -47,11 +106,11 @@ go build -o bin/fake-bot ./examples/fake-bot
 | Переменная | Обязательно | По умолчанию | Описание |
 |---|---|---|---|
 | `NODE_ID` | да | — | Идентификатор ноды |
-| `STORE` | нет | `memory` (Go); в `.env.example` — `postgres` | `memory` или `postgres` |
-| `MEMORY_STORE_PATH` | нет* | `.mvp-manager/store.json` | Общий JSON для всех процессов; `""` = только RAM |
-| `POSTGRES_USER` / `PASSWORD` / `DB` / `DB_E2E` / `PORT` | для compose | `mvp` / `mvp` / `mvp_manager` / `mvp_manager_e2e` / `5432` | Credentials Docker; должны совпадать с DSN |
+| `STORE` | нет | **`postgres`** | `memory` или `postgres` |
 | `DATABASE_URL` | при postgres | — | DSN рабочей БД `mvp_manager` |
 | `DATABASE_URL_E2E` | для e2e/migrate --e2e | — | DSN БД `mvp_manager_e2e` (тот же хост/порт) |
+| `MEMORY_STORE_PATH` | нет* | `.mvp-manager/store.json` | Общий JSON при `STORE=memory`; `""` = только RAM |
+| `POSTGRES_USER` / `PASSWORD` / `DB` / `DB_E2E` / `PORT` | для compose | `mvp` / `mvp` / `mvp_manager` / `mvp_manager_e2e` / `5432` | Credentials Docker; должны совпадать с DSN |
 | `BOT_RUNNER_COMMAND` | для default* | — | Команда запуска `bot-runner` (агент) |
 | `BOT_RUNNER_WORKDIR` | нет | — | Workdir процесса runner |
 | `BOT_RUNNER_HEALTH_PORT` | нет | — | Служебный `/healthz` самого runner |
@@ -91,8 +150,8 @@ go run ./cmd/migrate up
 # 3) сиды вручную (только dev по умолчанию; идемпотентно)
 go run ./cmd/migrate seed
 
-# 4) приложение
-export STORE=postgres NODE_ID=node-1
+# 4) приложение (STORE можно не задавать — дефолт postgres)
+export NODE_ID=node-1
 export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
 ./bin/agent
 ./bin/ctl bots list   # видны 3 seed default-бота
@@ -113,7 +172,7 @@ export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
 
 ## Memory
 
-Для локальной работы без Docker задайте `STORE=memory` явно (или не делайте `source .env` с postgres-defaults из `.env.example`). Memory e2e-скрипты уже экспортируют `STORE=memory`.
+Для работы без Docker задайте `STORE=memory` явно. Memory e2e-скрипты уже экспортируют `STORE=memory`.
 
 ```bash
 export NODE_ID=node-1
@@ -157,7 +216,7 @@ export BOT_RUNNER_COMMAND="$(pwd)/bin/bot-runner"
 ## E2E
 
 ```bash
-./scripts/e2e-phase1.sh          # memory
+./scripts/e2e-phase1.sh          # memory (STORE=memory внутри)
 ./scripts/e2e-phase2.sh
 ./scripts/e2e-phase3.sh
 ./scripts/e2e-phase4.sh

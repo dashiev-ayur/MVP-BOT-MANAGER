@@ -78,7 +78,11 @@ func main() {
 	issues := 0
 
 	fmt.Println("=== mvp-manager doctor ===")
-	fmt.Printf("store=%s path=%s focus_node=%s\n", storeKind, cfg.MemoryStorePath, nodeFilter)
+	if storeKind == config.StoreMemory {
+		fmt.Printf("store=%s path=%s focus_node=%s\n", storeKind, cfg.MemoryStorePath, nodeFilter)
+	} else {
+		fmt.Printf("store=%s focus_node=%s\n", storeKind, nodeFilter)
+	}
 	fmt.Println()
 
 	// --- Nodes ---

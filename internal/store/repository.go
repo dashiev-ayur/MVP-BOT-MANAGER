@@ -96,6 +96,10 @@ type BotRepository interface {
 	// ListByRuntime — боты, привязанные к runtime_id (набор инстансов runner’а).
 	ListByRuntime(ctx context.Context, runtimeID string) ([]Bot, error)
 
+	// ListByClientID — боты с client_id = clientID (UUID-строка).
+	// Боты без client_id не входят в выборку. Нет совпадений → пустой слайс, не ErrNotFound.
+	ListByClientID(ctx context.Context, clientID string) ([]Bot, error)
+
 	// Update полностью заменяет изменяемые поля бота (кроме CreatedAt).
 	Update(ctx context.Context, b Bot) (Bot, error)
 

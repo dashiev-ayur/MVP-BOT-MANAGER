@@ -132,6 +132,16 @@ func (r *BotRepo) ListByRuntime(ctx context.Context, runtimeID string) ([]store.
 	return collectBots(rows)
 }
 
+// ListByClientID — боты с client_id = clientID.
+func (r *BotRepo) ListByClientID(ctx context.Context, clientID string) ([]store.Bot, error) {
+	rows, err := r.pool.Query(ctx, `SELECT `+botCols+` FROM bots WHERE client_id = $1::uuid`, clientID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	defer rows.Close()
+	return collectBots(rows)
+}
+
 // Update полностью заменяет изменяемые поля (кроме CreatedAt).
 func (r *BotRepo) Update(ctx context.Context, b store.Bot) (store.Bot, error) {
 	if b.ID == "" {

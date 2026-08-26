@@ -60,12 +60,15 @@ func main() {
 	}
 	defer func() { _ = st.Close() }()
 
-	slog.Info("bot-runner старт",
+	args := []any{
 		"node_id", cfg.NodeID,
 		"runtime_id", cfg.RuntimeID,
 		"store", storeKind,
-		"memory_store_path", cfg.MemoryStorePath,
-	)
+	}
+	if storeKind == config.StoreMemory {
+		args = append(args, "memory_store_path", cfg.MemoryStorePath)
+	}
+	slog.Info("bot-runner старт", args...)
 
 	mgr := runner.New(cfg.NodeID, cfg.RuntimeID, st.Bots)
 	mgr.SyncInterval = time.Second

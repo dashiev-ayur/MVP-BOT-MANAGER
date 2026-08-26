@@ -50,7 +50,9 @@ const (
 const (
 	StoreMemory   = "memory"
 	StorePostgres = "postgres"
-	DefaultStore  = StoreMemory
+	// DefaultStore — postgres: локальная работа и прод-путь через Docker Compose.
+	// Memory e2e и офлайн-режим задают STORE=memory явно.
+	DefaultStore = StorePostgres
 
 	// DefaultMemoryStorePath — общий файл для agent, ctl, bot-runner, healthcheck.
 	// Без общего файла процессы не видят записи друг друга (критично для E2E).
@@ -145,9 +147,9 @@ type Config struct {
 //
 // Правила:
 //   - NODE_ID обязателен (после TrimSpace не должен быть пустым);
-//   - STORE по умолчанию — memory, если переменная не задана или пустая;
+//   - STORE по умолчанию — postgres, если переменная не задана или пустая;
 //   - неизвестный STORE → ошибка с перечислением допустимых значений (не паника);
-//   - postgres принимается как известное значение конфига, но wiring/БД — не здесь;
+//   - postgres требует DATABASE_URL при Open (storeopen), не на этапе Load;
 //   - MEMORY_STORE_PATH: если переменная не задана — DefaultMemoryStorePath;
 //     если задана пустой строкой — persistence отключена (только RAM);
 //   - интервалы парсятся как time.ParseDuration ("3s", "500ms"); пусто → дефолты.

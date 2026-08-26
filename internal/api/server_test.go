@@ -175,6 +175,179 @@ func TestCreateBotResponseSnakeCase(t *testing.T) {
 	}
 }
 
+func TestCreateBotWithClientID(t *testing.T) {
+	st := memory.New()
+	cfg := config.Config{
+		NodeID:           "node-api",
+		ControlAPIToken:  "secret",
+		APIAddr:          "127.0.0.1:0",
+		BotRunnerCommand: "bot-runner",
+	}
+	srv := api.New(cfg, ops.Repos{
+		Nodes: st.Nodes, Runtimes: st.Runtimes, Bots: st.Bots, Events: st.Events,
+	})
+	h := srv.Handler()
+
+	const clientID = "11111111-1111-4111-8111-111111111111"
+	body := `{
+		"name": "with-client",
+		"bot_type": "default",
+		"channel": "telegram",
+		"run_mode": "webhook",
+		"port": 18043,
+		"token_ref": "secret:bot-43",
+		"client_id": "` + clientID + `",
+		"assigned_node_id": "node-api",
+		"desired_state": "stopped"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/bots", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create: want 201, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["client_id"] != clientID {
+		t.Fatalf("client_id: got %#v", got["client_id"])
+	}
+
+	bad := httptest.NewRequest(http.MethodPost, "/v1/bots", bytes.NewBufferString(`{
+		"name": "bad-client",
+		"bot_type": "default",
+		"channel": "telegram",
+		"run_mode": "webhook",
+		"port": 18044,
+		"token_ref": "secret:bot-44",
+		"client_id": "not-a-uuid",
+		"desired_state": "stopped"
+	}`))
+	bad.Header.Set("Authorization", "Bearer secret")
+	bad.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, bad)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("invalid client_id: want 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	// PATCH: смена client_id.
+	id, _ := got["id"].(string)
+	patch := httptest.NewRequest(http.MethodPatch, "/v1/bots/"+id, bytes.NewBufferString(`{
+		"client_id": "22222222-2222-4222-8222-222222222222"
+	}`))
+	patch.Header.Set("Authorization", "Bearer secret")
+	patch.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, patch)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch: want 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var patched map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &patched); err != nil {
+		t.Fatalf("patch decode: %v", err)
+	}
+	if patched["client_id"] != "22222222-2222-4222-8222-222222222222" {
+		t.Fatalf("patched client_id: got %#v", patched["client_id"])
+	}
+}
+
+func TestListBotsFilterByClientID(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	cfg := config.Config{
+		NodeID:          "node-api",
+		ControlAPIToken: "secret",
+		APIAddr:         "127.0.0.1:0",
+	}
+	srv := api.New(cfg, ops.Repos{
+		Nodes: st.Nodes, Runtimes: st.Runtimes, Bots: st.Bots, Events: st.Events,
+	})
+	h := srv.Handler()
+
+	clientA := "11111111-1111-4111-8111-111111111111"
+	clientB := "22222222-2222-4222-8222-222222222222"
+	if _, err := st.Bots.Create(ctx, store.Bot{
+		ClientID: &clientA, Name: "a1", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: 19101, TokenRef: "tok-a",
+		DesiredState: store.DesiredStopped, ActualState: store.ActualUnknown,
+	}); err != nil {
+		t.Fatalf("create a1: %v", err)
+	}
+	if _, err := st.Bots.Create(ctx, store.Bot{
+		ClientID: &clientB, Name: "b1", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: 19102, TokenRef: "tok-b",
+		DesiredState: store.DesiredStopped, ActualState: store.ActualUnknown,
+	}); err != nil {
+		t.Fatalf("create b1: %v", err)
+	}
+	if _, err := st.Bots.Create(ctx, store.Bot{
+		Name: "orphan", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: 19103, TokenRef: "tok-o",
+		DesiredState: store.DesiredStopped, ActualState: store.ActualUnknown,
+	}); err != nil {
+		t.Fatalf("create orphan: %v", err)
+	}
+
+	authGet := func(path string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer secret")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+
+	decodeNames := func(body []byte) []string {
+		t.Helper()
+		var list []map[string]any
+		if err := json.Unmarshal(body, &list); err != nil {
+			t.Fatalf("decode: %v body=%s", err, body)
+		}
+		names := make([]string, 0, len(list))
+		for _, b := range list {
+			name, _ := b["name"].(string)
+			names = append(names, name)
+		}
+		return names
+	}
+
+	all := authGet("/v1/bots")
+	if all.Code != http.StatusOK {
+		t.Fatalf("all: want 200, got %d body=%s", all.Code, all.Body.String())
+	}
+	if got := decodeNames(all.Body.Bytes()); len(got) != 3 {
+		t.Fatalf("all: want 3 bots, got %v", got)
+	}
+
+	filtered := authGet("/v1/bots?client_id=" + clientA)
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("filter: want 200, got %d body=%s", filtered.Code, filtered.Body.String())
+	}
+	if got := decodeNames(filtered.Body.Bytes()); len(got) != 1 || got[0] != "a1" {
+		t.Fatalf("filter client A: got %v", got)
+	}
+
+	unknown := authGet("/v1/bots?client_id=33333333-3333-4333-8333-333333333333")
+	if unknown.Code != http.StatusOK {
+		t.Fatalf("unknown: want 200, got %d body=%s", unknown.Code, unknown.Body.String())
+	}
+	if got := decodeNames(unknown.Body.Bytes()); len(got) != 0 {
+		t.Fatalf("unknown: want empty, got %v", got)
+	}
+
+	bad := authGet("/v1/bots?client_id=not-a-uuid")
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("invalid uuid: want 400, got %d body=%s", bad.Code, bad.Body.String())
+	}
+}
+
 // assertSnakeKeys проверяет наличие канонических ключей и отсутствие PascalCase.
 func assertSnakeKeys(t *testing.T, body string, want []string, forbid []string) {
 	t.Helper()

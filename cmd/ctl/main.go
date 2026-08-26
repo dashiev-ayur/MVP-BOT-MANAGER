@@ -43,8 +43,8 @@ const helpText = `mvp-manager ctl — CLI управления ботами (о�
   ctl runtimes start <runtime-id>
   ctl runtimes stop <runtime-id>
 
-ENV (как у agent): NODE_ID, STORE=memory|postgres, MEMORY_STORE_PATH / DATABASE_URL
-(по умолчанию memory → .mvp-manager/store.json).
+ENV (как у agent): NODE_ID, STORE=memory|postgres (по умолчанию postgres),
+MEMORY_STORE_PATH (memory) / DATABASE_URL (postgres).
 
 Для default create нужен (или будет создан) runtime bot-runner-<NODE_ID>;
 команду запуска runner задаёт agent через BOT_RUNNER_COMMAND.

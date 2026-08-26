@@ -493,14 +493,17 @@ bot_runner_workdir: /var/lib/mvp-manager/runner
 |---|---|---|
 | `GET` | `/healthz` | liveness **control-api** (не путать с `/healthz` ботов) |
 | `GET` | `/v1/nodes` | ноды |
-| `GET` | `/v1/bots` | список ботов |
-| `POST` | `/v1/bots` | создать (port, bot_type, custom_name, …) |
+| `GET` | `/v1/bots` | список ботов; опционально `?client_id=<uuid>` |
+| `POST` | `/v1/bots` | создать (port, bot_type, custom_name, client_id, …) |
 | `PATCH` | `/v1/bots/{id}` | изменить конфиг / desired |
 | `POST` | `/v1/bots/{id}/start` | desired=running |
 | `POST` | `/v1/bots/{id}/stop` | desired=stopped |
 | `POST` | `/v1/bots/{id}/migrate` | `{ "to_node_id": "node-2" }` |
 | `GET` | `/v1/runtimes` | OS-процессы |
 | `GET` | `/v1/bots/{id}/events` | аудит |
+
+`GET /v1/bots?client_id=<uuid>` — только боты этого клиента (без параметра — все). Невалидный UUID → `400`.  
+`POST /v1/bots` и `PATCH /v1/bots/{id}` принимают опциональный `client_id` (UUID); omit/пусто при create → `null`; при PATCH пустая строка сбрасывает в `null`.
 
 Создание `default` бота не создаёт новый OS-процесс — только строку в `bots` и привязку к runner.  
 Создание `custom` — строка в `bots` + `runtimes`.
@@ -657,6 +660,7 @@ POST /v1/bots
   "assigned_node_id": "node-1",
   "desired_state": "running",
   "token_ref": "secret:bot-42",
+  "client_id": "11111111-1111-4111-8111-111111111111",
   "scenario_config": {}
 }
 ```

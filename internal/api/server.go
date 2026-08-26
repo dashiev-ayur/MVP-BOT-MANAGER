@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"mvp-manager/internal/config"
@@ -116,7 +117,20 @@ func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
-	list, err := s.Repos.Bots.List(r.Context())
+	clientID := strings.TrimSpace(r.URL.Query().Get("client_id"))
+
+	var list []store.Bot
+	var err error
+	if clientID == "" {
+		list, err = s.Repos.Bots.List(r.Context())
+	} else {
+		// client_id в схеме — UUID; иначе postgres даст 500 на ::uuid.
+		if !validUUID(clientID) {
+			writeErr(w, http.StatusBadRequest, "client_id должен быть UUID")
+			return
+		}
+		list, err = s.Repos.Bots.ListByClientID(r.Context(), clientID)
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -198,6 +212,7 @@ type createBotBody struct {
 	RunMode        store.BotRunMode   `json:"run_mode"`
 	Port           int                `json:"port"`
 	TokenRef       string             `json:"token_ref"`
+	ClientID       *string            `json:"client_id"`
 	AssignedNodeID *string            `json:"assigned_node_id"`
 	DesiredState   store.DesiredState `json:"desired_state"`
 	ArtifactPath   *string            `json:"artifact_path"`
@@ -217,6 +232,12 @@ func (s *Server) handleCreateBot(w http.ResponseWriter, r *http.Request) {
 	if body.RunMode == "" {
 		body.RunMode = store.BotRunModeWebhook
 	}
+	clientID, err := parseOptionalClientID(body.ClientID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	body.ClientID = clientID
 	nodeID := s.Cfg.NodeID
 	if body.AssignedNodeID != nil && *body.AssignedNodeID != "" {
 		nodeID = *body.AssignedNodeID
@@ -224,7 +245,6 @@ func (s *Server) handleCreateBot(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var bot store.Bot
-	var err error
 
 	switch body.BotType {
 	case store.BotTypeCustom:
@@ -285,6 +305,7 @@ func (s *Server) createCustom(ctx context.Context, body createBotBody, nodeID st
 	}
 	sc := startCmd
 	bot, err := s.Repos.Bots.Create(ctx, store.Bot{
+		ClientID:       body.ClientID,
 		Name:           body.Name,
 		BotType:        store.BotTypeCustom,
 		CustomName:     &cn,
@@ -339,6 +360,7 @@ func (s *Server) createDefault(ctx context.Context, body createBotBody, nodeID s
 		return store.Bot{}, err
 	}
 	bot, err := s.Repos.Bots.Create(ctx, store.Bot{
+		ClientID:       body.ClientID,
 		Name:           body.Name,
 		BotType:        body.BotType,
 		Channel:        body.Channel,
@@ -360,6 +382,7 @@ func (s *Server) createDefault(ctx context.Context, body createBotBody, nodeID s
 type patchBotBody struct {
 	DesiredState   *store.DesiredState `json:"desired_state"`
 	TokenRef       *string             `json:"token_ref"`
+	ClientID       *string             `json:"client_id"`
 	AssignedNodeID *string             `json:"assigned_node_id"`
 	ConfigVersion  *int64              `json:"config_version"`
 	ScenarioConfig map[string]any      `json:"scenario_config"`
@@ -383,6 +406,14 @@ func (s *Server) handlePatchBot(w http.ResponseWriter, r *http.Request) {
 	if body.TokenRef != nil {
 		bot.TokenRef = *body.TokenRef
 		bot.ConfigVersion++
+	}
+	if body.ClientID != nil {
+		parsed, err := parseOptionalClientID(body.ClientID)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		bot.ClientID = parsed
 	}
 	if body.AssignedNodeID != nil {
 		bot.AssignedNodeID = body.AssignedNodeID
@@ -449,4 +480,26 @@ func writeStoreErr(w http.ResponseWriter, err error) {
 	default:
 		writeErr(w, http.StatusInternalServerError, err.Error())
 	}
+}
+
+// uuidRE — канонический UUID с дефисами (RFC 4122), без внешней uuid-библиотеки.
+var uuidRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+func validUUID(s string) bool {
+	return uuidRE.MatchString(s)
+}
+
+// parseOptionalClientID: omit/пустая строка → nil; иначе UUID или ошибка.
+func parseOptionalClientID(raw *string) (*string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	s := strings.TrimSpace(*raw)
+	if s == "" {
+		return nil, nil
+	}
+	if !validUUID(s) {
+		return nil, fmt.Errorf("client_id должен быть UUID")
+	}
+	return &s, nil
 }

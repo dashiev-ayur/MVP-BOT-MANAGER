@@ -57,14 +57,17 @@ func main() {
 	}
 	defer func() { _ = st.Close() }()
 
-	slog.Info("healthcheck старт",
+	args := []any{
 		"node_id", cfg.NodeID,
 		"store", storeKind,
-		"memory_store_path", cfg.MemoryStorePath,
 		"check_interval", cfg.CheckInterval.String(),
 		"failure_threshold", cfg.FailureThreshold,
 		"all_nodes", cfg.HealthcheckAllNodes,
-	)
+	}
+	if storeKind == config.StoreMemory {
+		args = append(args, "memory_store_path", cfg.MemoryStorePath)
+	}
+	slog.Info("healthcheck старт", args...)
 
 	chk := health.New(cfg.NodeID, st.Bots)
 	chk.AllNodes = cfg.HealthcheckAllNodes

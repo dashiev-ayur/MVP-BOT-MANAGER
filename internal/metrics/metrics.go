@@ -1,7 +1,7 @@
 // Package metrics — простые счётчики процесса (без обязательного Prometheus).
 //
-// Значения пишутся в slog с attr metric=<name> (удобно грепать в логах agent)
-// и доступны через Snapshot / Text для опционального GET /metrics.
+// Счётчики только в памяти: Snapshot / Text для GET /metrics.
+// В slog не пишем на каждый Inc — иначе reconcile_ticks заливает консоль.
 package metrics
 
 import (
@@ -27,13 +27,13 @@ const (
 type Registry struct {
 	mu   sync.Mutex
 	vals map[string]*atomic.Int64
-	log  *slog.Logger
+	log  *slog.Logger // зарезервирован; Inc/Add в лог не пишут
 }
 
 // Default — общий registry процесса (agent / control-api).
 var Default = New(nil)
 
-// New создаёт пустой registry. log=nil → slog.Default при Inc.
+// New создаёт пустой registry. log сохраняется для совместимости API.
 func New(log *slog.Logger) *Registry {
 	return &Registry{
 		vals: make(map[string]*atomic.Int64),
@@ -52,31 +52,19 @@ func (r *Registry) counter(name string) *atomic.Int64 {
 	return c
 }
 
-// Inc увеличивает счётчик на 1 и пишет slog с metric=<name>.
+// Inc увеличивает счётчик на 1 (без записи в slog).
 func (r *Registry) Inc(name string, attrs ...any) {
-	n := r.counter(name).Add(1)
-	log := r.log
-	if log == nil {
-		log = slog.Default()
-	}
-	args := []any{"metric", name, "value", n}
-	args = append(args, attrs...)
-	log.Info("metric", args...)
+	_ = attrs
+	r.counter(name).Add(1)
 }
 
-// Add увеличивает счётчик на delta (>=1 имеет смысл для batch).
+// Add увеличивает счётчик на delta (без записи в slog).
 func (r *Registry) Add(name string, delta int64, attrs ...any) {
+	_ = attrs
 	if delta == 0 {
 		return
 	}
-	n := r.counter(name).Add(delta)
-	log := r.log
-	if log == nil {
-		log = slog.Default()
-	}
-	args := []any{"metric", name, "value", n, "delta", delta}
-	args = append(args, attrs...)
-	log.Info("metric", args...)
+	r.counter(name).Add(delta)
 }
 
 // Get возвращает текущее значение (0 если счётчика ещё не было).

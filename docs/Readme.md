@@ -22,11 +22,11 @@
 
 | Этап | Реализация | Персистентность |
 |---|---|---|
-| Memory | **In-memory** (`STORE=memory` + файл) | Пока живы процессы; общий JSON |
-| Postgres (Phase PG) | **PostgreSQL** (`STORE=postgres`) | Docker Compose; в `.env` / `.env.example` — **по умолчанию** |
+| Memory | **In-memory** (`STORE=memory` + файл) | Пока живы процессы; общий JSON; задавать явно |
+| Postgres (Phase PG) | **PostgreSQL** (`STORE=postgres`) | Docker Compose; **дефолт** в Go и `.env.example` |
 
 Переключение — конфигом (`STORE`, `DATABASE_URL` / `POSTGRES_*`), без переписывания бизнес-логики.  
-Compose читает `POSTGRES_*` из `.env` (согласованы с `DATABASE_URL`). Без `source .env` у Go остаётся `DefaultStore=memory`.
+Compose читает `POSTGRES_*` из `.env` (согласованы с `DATABASE_URL`). Без `STORE` у Go — `DefaultStore=postgres` (нужен `DATABASE_URL`).
 
 ### Сейчас (Phase PG — ✅ принята)
 

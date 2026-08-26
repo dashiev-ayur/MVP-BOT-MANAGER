@@ -61,19 +61,31 @@ func TestTelegramStartWebhook(t *testing.T) {
 	}
 }
 
-// TestTelegramStartPolling — один цикл getUpdates с /start → sendMessage.
+// TestTelegramStartPolling — deleteWebhook → getUpdates с /start → sendMessage.
 func TestTelegramStartPolling(t *testing.T) {
-	var calls int
+	var (
+		mu              sync.Mutex
+		getUpdatesCalls int
+		deletedWebhook  bool
+	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case strings.Contains(r.URL.Path, "deleteWebhook"):
+			mu.Lock()
+			deletedWebhook = true
+			mu.Unlock()
+			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 		case strings.Contains(r.URL.Path, "getUpdates"):
-			calls++
-			if calls == 1 {
+			mu.Lock()
+			getUpdatesCalls++
+			n := getUpdatesCalls
+			mu.Unlock()
+			if n == 1 {
 				_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":7,"message":{"text":"/start","chat":{"id":99}}}]}`))
 				return
 			}
-			// Второй запрос — блокируем до отмены через короткий пустой ответ.
+			// Второй запрос — короткий пустой ответ до отмены.
 			_, _ = w.Write([]byte(`{"ok":true,"result":[]}`))
 		case strings.Contains(r.URL.Path, "sendMessage"):
 			_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
@@ -102,7 +114,12 @@ func TestTelegramStartPolling(t *testing.T) {
 	if err != nil && !errorsIsContextCanceled(err) {
 		t.Fatalf("polling: %v", err)
 	}
-	if calls < 1 {
+	mu.Lock()
+	defer mu.Unlock()
+	if !deletedWebhook {
+		t.Fatal("deleteWebhook not called before getUpdates")
+	}
+	if getUpdatesCalls < 1 {
 		t.Fatal("getUpdates not called")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -233,6 +234,85 @@ func TestBotCRUDDesiredActual(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("reuse port after delete: %v", err)
+	}
+}
+
+func TestBotListByClientID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := memory.New()
+
+	clientA := "11111111-1111-4111-8111-111111111111"
+	clientB := "22222222-2222-4222-8222-222222222222"
+
+	a1, err := s.Bots.Create(ctx, store.Bot{
+		ClientID: &clientA, Name: "a1", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: 7101, TokenRef: "t-a1",
+	})
+	if err != nil {
+		t.Fatalf("create a1: %v", err)
+	}
+	if _, err := s.Bots.Create(ctx, store.Bot{
+		ClientID: &clientA, Name: "a2", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: 7102, TokenRef: "t-a2",
+	}); err != nil {
+		t.Fatalf("create a2: %v", err)
+	}
+	if _, err := s.Bots.Create(ctx, store.Bot{
+		ClientID: &clientB, Name: "b1", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: 7103, TokenRef: "t-b1",
+	}); err != nil {
+		t.Fatalf("create b1: %v", err)
+	}
+	if _, err := s.Bots.Create(ctx, store.Bot{
+		Name: "orphan", BotType: store.BotTypeDefault,
+		Channel: store.BotChannelTelegram, RunMode: store.BotRunModePolling,
+		Port: 7104, TokenRef: "t-orphan",
+	}); err != nil {
+		t.Fatalf("create orphan: %v", err)
+	}
+
+	got, err := s.Bots.ListByClientID(ctx, clientA)
+	if err != nil {
+		t.Fatalf("ListByClientID A: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("client A: want 2 bots, got %d", len(got))
+	}
+	ids := map[string]bool{}
+	for _, b := range got {
+		ids[b.ID] = true
+	}
+	if !ids[a1.ID] {
+		t.Fatalf("client A list missing a1")
+	}
+
+	// UUID в другом регистре должен совпасть.
+	gotFold, err := s.Bots.ListByClientID(ctx, strings.ToUpper(clientA))
+	if err != nil {
+		t.Fatalf("ListByClientID fold: %v", err)
+	}
+	if len(gotFold) != 2 {
+		t.Fatalf("client A (upper): want 2, got %d", len(gotFold))
+	}
+
+	gotB, err := s.Bots.ListByClientID(ctx, clientB)
+	if err != nil {
+		t.Fatalf("ListByClientID B: %v", err)
+	}
+	if len(gotB) != 1 || gotB[0].Name != "b1" {
+		t.Fatalf("client B: %+v", gotB)
+	}
+
+	empty, err := s.Bots.ListByClientID(ctx, "33333333-3333-4333-8333-333333333333")
+	if err != nil {
+		t.Fatalf("ListByClientID unknown: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("unknown client: want empty, got %d", len(empty))
 	}
 }
 
